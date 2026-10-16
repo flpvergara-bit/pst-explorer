@@ -1,0 +1,19 @@
+# Índices y biblioteca: contienen el texto de los correos. Nunca se suben.
+data/
+
+# Dependencias (se instalan con npm install)
+node_modules/
+
+# Archivos de Outlook y exportaciones
+*.pst
+*.ost
+*.eml
+*.msg
+
+# Entorno local
+.claude/
+scratch/
+*.log
+.env
+Thumbs.db
+desktop.ini

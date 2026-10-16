@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PST Explorer</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='6' width='28' height='20' rx='3' fill='%231f6feb'/%3E%3Cpath d='M3 8l13 9 13-9' stroke='white' stroke-width='2.5' fill='none'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand" title="PST Explorer">
+      <svg viewBox="0 0 32 32" width="22" height="22" aria-hidden="true"><rect x="2" y="6" width="28" height="20" rx="3" fill="currentColor"/><path d="M3 8l13 9 13-9" stroke="var(--bg)" stroke-width="2.5" fill="none"/></svg>
+      <span>PST Explorer</span>
+    </div>
+    <button id="btnLib" class="btn primary" title="Archivos PST de la biblioteca">Biblioteca</button>
+
+    <div class="search-wrap">
+      <div class="search">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M15.5 15.5L21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Buscar en correos y adjuntos…   (atajo: /)">
+        <select id="scope" title="Dónde buscar">
+          <option value="all">Todos los archivos</option>
+          <option value="file">Archivo actual</option>
+          <option value="folder">Carpeta actual</option>
+          <option value="foldersub">Carpeta y subcarpetas</option>
+        </select>
+        <button id="btnAdv" class="btn ghost" title="Búsqueda avanzada">Filtros</button>
+        <button id="btnHelp" class="btn ghost icon" title="Ayuda de búsqueda">?</button>
+      </div>
+      <div id="chips" class="chips"></div>
+    </div>
+
+    <div id="progress" class="progress" hidden title="Ver el estado de la biblioteca">
+      <div class="ptext"></div>
+      <div class="pbar"><div></div></div>
+    </div>
+    <div class="menu-wrap">
+      <button id="btnMenu" class="btn ghost" title="Exportar y más opciones">Exportar ▾</button>
+      <div id="menu" class="menu" hidden>
+        <div class="menu-title">Resultados actuales</div>
+        <button data-act="csv">Listado de correos (Excel/CSV)</button>
+        <button data-act="attzip">Todos los adjuntos (ZIP, por correo)</button>
+        <button data-act="attzipflat">Todos los adjuntos (ZIP, una sola carpeta)</button>
+        <button data-act="emlzip">Correos como .eml (ZIP)</button>
+        <button data-act="print">Imprimir resultados (máx. 200)</button>
+        <hr>
+        <button data-act="library">Biblioteca de archivos…</button>
+        <button data-act="pause" id="menuPause">Pausar indexado</button>
+      </div>
+    </div>
+  </header>
+
+  <section id="advPanel" class="adv" hidden>
+    <form id="advForm" autocomplete="off">
+      <label>De<input name="de" placeholder="nombre o correo"></label>
+      <label>Para / CC<input name="para" placeholder="nombre o correo"></label>
+      <label>Asunto<input name="asunto"></label>
+      <label>En el cuerpo<input name="cuerpo"></label>
+      <label>Nombre de adjunto<input name="adjunto" placeholder="factura, .pdf…"></label>
+      <label>Dentro de adjuntos<input name="contenido" placeholder="texto en PDF, Word, Excel…"></label>
+      <label>Sin estas palabras<input name="sin"></label>
+      <label>Desde<input name="dateFrom" type="date"></label>
+      <label>Hasta<input name="dateTo" type="date"></label>
+      <label>Tipo de adjunto
+        <select name="attext">
+          <option value="">Cualquiera</option>
+          <option value="pdf">PDF</option>
+          <option value="xls,xlsx,xlsm,csv">Excel / CSV</option>
+          <option value="doc,docx">Word</option>
+          <option value="ppt,pptx">PowerPoint</option>
+          <option value="jpg,jpeg,png,gif,bmp,tif,tiff,heic">Imágenes</option>
+          <option value="zip,rar,7z">Comprimidos</option>
+          <option value="xml">XML (facturas electrónicas)</option>
+          <option value="eml,msg">Correos adjuntos</option>
+        </select>
+      </label>
+      <div class="checks">
+        <label class="ck"><input type="checkbox" name="att"> Solo con adjuntos</label>
+        <label class="ck"><input type="checkbox" name="unread"> Solo no leídos</label>
+        <label class="ck"><input type="checkbox" name="mail"> Solo correos (sin citas/contactos)</label>
+        <label class="ck"><input type="checkbox" name="inatt" checked> Buscar también dentro de adjuntos</label>
+        <label class="ck" title="Un mismo correo guardado en varios respaldos se muestra una sola vez"><input type="checkbox" name="dups"> Mostrar copias repetidas entre respaldos</label>
+      </div>
+      <div class="adv-actions">
+        <button type="button" id="advClear" class="btn ghost">Limpiar</button>
+        <button type="submit" class="btn primary">Buscar</button>
+      </div>
+    </form>
+  </section>
+
+  <main id="layout" class="layout">
+    <nav id="sidebar" class="sidebar">
+      <div class="views">
+        <button data-view="mail" class="view active"><svg class="i" viewBox="0 0 24 24"><path d="M3 6h18v12H3zM3 7l9 7 9-7"/></svg> Correos</button>
+        <button data-view="threads" class="view"><svg class="i" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg> Conversaciones</button>
+        <button data-view="attachments" class="view"><svg class="i" viewBox="0 0 24 24"><path d="M16.5 6.5l-8.3 8.3a2 2 0 0 0 2.8 2.8l8.5-8.5a4 4 0 0 0-5.7-5.7L5.3 11.9a6 6 0 0 0 8.5 8.5l6.7-6.7"/></svg> Adjuntos</button>
+      </div>
+      <div class="tree-head">
+        <span>Carpetas</span>
+        <label class="ck small" title="Ocultar carpetas sin elementos"><input type="checkbox" id="hideEmpty" checked> ocultar vacías</label>
+      </div>
+      <div id="tree" class="tree"></div>
+    </nav>
+    <div class="splitter" data-split="side"></div>
+
+    <section class="list-pane">
+      <div class="list-head">
+        <div class="list-title"><strong id="listTitle">—</strong> <span id="listCount" class="muted"></span></div>
+        <div class="list-tools">
+          <select id="sort" title="Ordenar">
+            <option value="date">Fecha</option>
+            <option value="relevance">Relevancia</option>
+            <option value="sender">Remitente</option>
+            <option value="subject">Asunto</option>
+            <option value="size">Tamaño</option>
+            <option value="att">Adjuntos</option>
+          </select>
+          <button id="dir" class="btn ghost icon" title="Invertir orden">↓</button>
+        </div>
+      </div>
+      <div id="attBar" class="att-bar" hidden>
+        <input id="attName" type="search" placeholder="Filtrar por nombre de archivo…">
+        <div id="extChips" class="ext-chips"></div>
+        <div class="att-sel"><span id="attSelCount"></span><button id="attSelZip" class="btn small" disabled>Descargar seleccionados (ZIP)</button></div>
+      </div>
+      <div id="list" class="vlist" tabindex="0"><div class="vspacer"></div><div class="vrows"></div></div>
+      <div id="listEmpty" class="list-empty" hidden></div>
+    </section>
+    <div class="splitter" data-split="list"></div>
+
+    <section id="reader" class="reader">
+      <div class="welcome">
+        <h2>Bienvenido</h2>
+        <p>Agrega tus archivos <b>.pst</b> u <b>.ost</b> a la biblioteca. Se indexan uno a uno en segundo plano (puedes navegar y buscar mientras tanto) y los índices quedan guardados: la próxima vez todo está listo al instante.</p>
+        <button class="btn primary" data-act="open">Agregar archivos…</button>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="libDlg" class="dlg wide">
+    <form method="dialog" class="dlg-inner">
+      <header><h3>Biblioteca de archivos</h3><button class="btn ghost icon" value="cancel" title="Cerrar">✕</button></header>
+      <div class="open-row">
+        <button type="button" id="btnPickFiles" class="btn primary">Agregar archivos…</button>
+        <button type="button" id="btnPickFolder" class="btn">Agregar carpeta…</button>
+        <input id="pathInput" placeholder="o pega una ruta de archivo o carpeta, p. ej. D:\Respaldos">
+        <button type="button" id="btnAddPath" class="btn">Agregar</button>
+      </div>
+      <p id="libMsg" class="lib-msg" hidden></p>
+      <div id="libList" class="lib-list"></div>
+      <div class="lib-foot">
+        <span id="libSummary" class="muted"></span>
+        <button type="button" id="btnPause" class="btn">Pausar indexado</button>
+      </div>
+      <details id="browseBox">
+        <summary>Explorar carpetas del equipo</summary>
+        <div class="browse-path" id="browsePath"></div>
+        <div id="browseList" class="browse"></div>
+      </details>
+      <p class="muted small-note">Los archivos se indexan de a uno: primero los correos de todos (del más pequeño al más grande) y después el texto de los adjuntos. Puedes buscar desde el primer momento; los resultados se completan a medida que avanza. Los índices se guardan en <code>data\index</code> y se reconocen por el contenido del archivo, aunque lo muevas de carpeta o de disco. Un correo repetido en varios respaldos se muestra una sola vez.</p>
+    </form>
+  </dialog>
+
+  <dialog id="helpDlg" class="dlg">
+    <form method="dialog" class="dlg-inner help">
+      <header><h3>Cómo buscar</h3><button class="btn ghost icon" value="cancel">✕</button></header>
+      <p>La búsqueda revisa asunto, remitente, destinatarios, cuerpo, nombres de adjuntos y el <b>texto dentro de los adjuntos</b> (PDF, Word, Excel, PowerPoint, TXT/CSV/XML/HTML y correos adjuntos). No distingue mayúsculas ni tildes.</p>
+      <table>
+        <tr><td><code>factura marzo</code></td><td>contiene ambas palabras (cada palabra admite terminaciones: <i>factura</i> encuentra <i>facturas</i>, <i>facturación</i>)</td></tr>
+        <tr><td><code>"orden de compra"</code></td><td>frase exacta</td></tr>
+        <tr><td><code>pago OR transferencia</code></td><td>cualquiera de los dos</td></tr>
+        <tr><td><code>cotización -borrador</code></td><td>excluye la palabra</td></tr>
+        <tr><td><code>de:juan</code> · <code>de:@empresa.cl</code></td><td>remitente (nombre o correo)</td></tr>
+        <tr><td><code>para:maria</code></td><td>destinatarios (Para, CC, CCO)</td></tr>
+        <tr><td><code>asunto:contrato</code></td><td>solo en el asunto</td></tr>
+        <tr><td><code>cuerpo:urgente</code></td><td>solo en el cuerpo</td></tr>
+        <tr><td><code>adjunto:pdf</code></td><td>nombre del archivo adjunto</td></tr>
+        <tr><td><code>contenido:"123456"</code></td><td>solo dentro del contenido de los adjuntos</td></tr>
+      </table>
+      <p class="muted">La búsqueda recorre todos los archivos de la biblioteca a la vez. Consejos: usa el selector «Todos los archivos / Archivo actual / Carpeta actual» para acotar, ordena por <b>Relevancia</b> para ver primero los mejores resultados y abre <b>Filtros</b> para fechas y tipos de adjunto. Las coincidencias se resaltan en el correo; usa ▲▼ para saltar entre ellas.</p>
+    </form>
+  </dialog>
+
+  <dialog id="headersDlg" class="dlg wide">
+    <form method="dialog" class="dlg-inner">
+      <header><h3>Encabezados de Internet</h3><button class="btn ghost icon" value="cancel">✕</button></header>
+      <pre id="headersPre" class="headers"></pre>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>

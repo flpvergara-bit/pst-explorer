@@ -1,0 +1,42 @@
+{
+  "name": "pst-explorer",
+  "version": "1.0.0",
+  "description": "Visor local para revisar y buscar en varios archivos PST/OST de Outlook: correos, conversaciones, adjuntos, búsqueda de texto completo (incluido el contenido de los adjuntos), impresión y exportación.",
+  "main": "server.js",
+  "private": true,
+  "license": "MIT",
+  "author": "flpvergara-bit",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/flpvergara-bit/pst-explorer.git"
+  },
+  "keywords": [
+    "pst",
+    "ost",
+    "outlook",
+    "email",
+    "viewer",
+    "search",
+    "full-text-search",
+    "ediscovery",
+    "sqlite",
+    "fts5"
+  ],
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node server.js --open"
+  },
+  "type": "commonjs",
+  "dependencies": {
+    "archiver": "^8.0.0",
+    "express": "^5.3.0",
+    "fflate": "^0.8.3",
+    "iconv-lite": "^0.7.3",
+    "nodemailer": "^10.1.2",
+    "pdfjs-dist": "^4.10.38",
+    "pst-extractor": "^1.12.0",
+    "rtf-stream-parser": "^4.0.0"
+  }
+}
