@@ -325,3 +325,4 @@ details summary { cursor: pointer; margin-top: 14px; color: var(--accent); }
 .hdr-lines { min-width: 180px; flex-basis: 220px; }
 .hdr-date { flex: 1 0 100%; text-align: left; order: 3; }
 @media (min-width: 1300px) { .hdr-date { flex: none; text-align: right; order: 0; } }
+#libNote a { color: var(--accent); cursor: pointer; }

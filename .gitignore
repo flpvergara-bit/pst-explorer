@@ -17,3 +17,6 @@ scratch/
 .env
 Thumbs.db
 desktop.ini
+
+# Instaladores generados
+dist/

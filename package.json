@@ -1,8 +1,8 @@
 {
   "name": "pst-explorer",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Visor local para revisar y buscar en varios archivos PST/OST de Outlook: correos, conversaciones, adjuntos, búsqueda de texto completo (incluido el contenido de los adjuntos), impresión y exportación.",
-  "main": "server.js",
+  "main": "electron/main.js",
   "private": true,
   "license": "MIT",
   "author": "flpvergara-bit",
@@ -26,11 +26,15 @@
     "node": ">=22.13"
   },
   "scripts": {
-    "start": "node server.js --open"
+    "start": "node server.js --open",
+    "app": "electron .",
+    "dist": "electron-builder --win --publish never",
+    "release": "electron-builder --win --publish always"
   },
   "type": "commonjs",
   "dependencies": {
     "archiver": "^8.0.0",
+    "electron-updater": "^6.8.9",
     "express": "^5.3.0",
     "fflate": "^0.8.3",
     "iconv-lite": "^0.7.3",
@@ -38,5 +42,77 @@
     "pdfjs-dist": "^4.10.38",
     "pst-extractor": "^1.12.0",
     "rtf-stream-parser": "^4.0.0"
+  },
+  "devDependencies": {
+    "electron": "^44.9.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.flpvergara.pstexplorer",
+    "productName": "PST Explorer",
+    "executableName": "PST Explorer",
+    "copyright": "Copyright © 2026 flpvergara-bit",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "server.js",
+      "src/**",
+      "public/**",
+      "electron/**",
+      "package.json",
+      "!**/node_modules/pst-extractor/example/**",
+      "!**/node_modules/pst-extractor/junit.xml",
+      "!**/node_modules/pdfjs-dist/build/**",
+      "!**/node_modules/pdfjs-dist/web/**",
+      "!**/node_modules/pdfjs-dist/image_decoders/**",
+      "!**/node_modules/pdfjs-dist/types/**",
+      "!**/node_modules/pdfjs-dist/cmaps/**",
+      "!**/node_modules/pdfjs-dist/standard_fonts/**",
+      "!**/node_modules/pdfjs-dist/wasm/**",
+      "!**/node_modules/@napi-rs/**",
+      "!**/*.map",
+      "!**/*.d.ts",
+      "!**/*.md",
+      "!**/test/**",
+      "!**/tests/**"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "PST Explorer",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerLanguages": [
+        "es_ES"
+      ],
+      "language": "3082",
+      "deleteAppDataOnUninstall": false,
+      "include": "build/installer.nsh"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "flpvergara-bit",
+        "repo": "pst-explorer",
+        "releaseType": "release"
+      }
+    ]
   }
 }

@@ -1,0 +1,25 @@
+name: Publicar instalador
+
+# Al subir una etiqueta de versión (por ejemplo v1.1.0) se compila el instalador
+# de Windows y se publica en GitHub Releases; la app instalada se actualiza sola.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Compilar y publicar
+        run: npx electron-builder --win --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -6,7 +6,24 @@ Visor local para revisar varios archivos de Outlook **.pst / .ost** a la vez, pe
 
 <sub>Captura hecha con el conjunto público de correos de Enron (EDRM, ZL Technologies, CC BY 3.0) que trae la librería pst-extractor como datos de prueba.</sub>
 
-## Instalación
+## Instalación (Windows, recomendado)
+
+1. Descarga **`PST Explorer Setup x.y.z.exe`** desde [Releases](https://github.com/flpvergara-bit/pst-explorer/releases/latest).
+2. Ejecútalo. Se instala solo para tu usuario (no pide permisos de administrador) y crea accesos en el menú Inicio y en el Escritorio.
+3. Abre **PST Explorer** y agrega tus archivos desde **Biblioteca**.
+
+El instalador todavía no está firmado digitalmente, así que la primera vez Windows SmartScreen puede mostrar «Windows protegió su PC». Pulsa **Más información → Ejecutar de todas formas**.
+
+**Qué ofrece la app de escritorio:**
+- Ventana propia, con diálogos nativos para elegir archivos y carpetas.
+- **Ícono en la bandeja.** Si cierras la ventana mientras se indexa, la app sigue trabajando en segundo plano, avisa cuando termina y evita que el equipo entre en suspensión. *Salir* desde el ícono la cierra del todo.
+- **Actualizaciones automáticas.** Las versiones nuevas se descargan solas y se instalan al reiniciar la app; nunca a mitad de un indexado.
+- Clic derecho en un `.pst` → **Abrir con → PST Explorer** lo agrega a la biblioteca. La asociación predeterminada con Outlook no se toca.
+- Los índices se guardan en `%APPDATA%\PST Explorer\data`, se conservan al actualizar o reinstalar, y se pueden abrir desde *Archivo → Abrir carpeta de datos*.
+
+**Si ya usabas la versión web**, la app detecta tu biblioteca anterior la primera vez que se abre. La **copia y la verifica** (comprueba que cada archivo copiado sea idéntico y la integridad de cada índice), así que no hay que volver a indexar. La carpeta original queda intacta hasta que la borres desde **Biblioteca**. Cierra la versión web antes de importar.
+
+## Versión web (desde el código)
 
 Necesitas [Node.js](https://nodejs.org) 22.13 o superior (usa el SQLite que trae Node, sin compilar nada).
 
@@ -22,17 +39,9 @@ cd pst-explorer
 npm install
 ```
 
-## Cómo iniciarlo
+En Windows, haz doble clic en **`Iniciar PST Explorer.bat`** o ejecuta `npm start`: se abre el navegador en `http://localhost:8765`. Para detenerla, cierra la ventana negra. El puerto se cambia con la variable `PORT` y la carpeta de datos con `PSTX_DATA`.
 
-En Windows, haz doble clic en **`Iniciar PST Explorer.bat`** (instala las dependencias la primera vez si faltan): se abre el navegador en `http://localhost:8765`. Para detener la aplicación, cierra la ventana negra que abre el `.bat`.
-
-También puedes iniciarlo desde una terminal:
-
-```bash
-npm start
-```
-
-El puerto se cambia con la variable `PORT` y la carpeta de datos con `PSTX_DATA`. Los diálogos nativos para elegir archivos y carpetas son de Windows; en otros sistemas se usa el explorador de carpetas integrado o se pega la ruta.
+Para desarrollar la app de escritorio: `npm run app` la abre con Electron y `npm run dist` genera el instalador en `dist/`. Para publicar una versión, sube una etiqueta `vX.Y.Z` y el workflow de GitHub Actions compila el instalador y lo publica en Releases, desde donde la app instalada se actualiza.
 
 Si Outlook tiene abierto un PST, ese archivo está bloqueado: cierra Outlook o trabaja sobre una copia.
 
@@ -79,7 +88,7 @@ Atajos: `/` o `Ctrl+F` para ir al buscador, ↑/↓ para recorrer la lista, `Ent
 
 ## Cómo funciona
 
-- Servidor Node.js local ([Express](https://expressjs.com)) e interfaz web sin frameworks (`public/`).
+- Servidor Node.js local ([Express](https://expressjs.com)) e interfaz web sin frameworks (`public/`). En la app de escritorio ([Electron](https://www.electronjs.org), `electron/`), el mismo servidor corre como proceso aparte en un puerto libre, protegido con un token de sesión, y la ventana carga esa interfaz.
 - Lectura de PST/OST con [pst-extractor](https://github.com/epfromer/pst-extractor), más una caché de páginas y una corrección para tablas con miles de destinatarios (`src/pstcache.js`).
 - Un índice SQLite con búsqueda de texto completo FTS5 por archivo (`src/indexer.js`, que corre en un proceso aparte). Las consultas combinan los índices con `ATTACH` (`src/query.js`) y `src/consolidate.js` detecta las copias entre respaldos.
 - Texto de adjuntos: [pdf.js](https://mozilla.github.io/pdf.js/) para PDF y [fflate](https://github.com/101arrowz/fflate) para Word, Excel y PowerPoint.

@@ -1104,7 +1104,14 @@ function renderLibrary() {
   const active = s.files.filter((f) => f.active).length;
   $('#libSummary').innerHTML = `${s.files.length} archivo(s) · ${active} activo(s) · ${fmtNum(s.totals.messages)} correos indexados${s.lastConsolidation && s.lastConsolidation.duplicates ? ` · ${fmtNum(s.lastConsolidation.duplicates)} copias repetidas ocultas` : ''}${s.consolidating ? ' · detectando correos repetidos…' : ''}`;
   $('#btnPause').textContent = s.paused ? 'Reanudar indexado' : 'Pausar indexado';
-  $('#btnPause').hidden = !s.files.length;
+  $('#btnPause').hidden = !s.paused && !s.files.some((f) => f.enabled && f.exists && !f.failed && !f.status.attComplete);
+  const mig = s.migration;
+  $('#libNote').innerHTML = [
+    `Índices guardados en ${desktop ? `<a data-act="datafolder" title="Abrir la carpeta">${esc(s.dataDir)}</a>` : `<code>${esc(s.dataDir)}</code>`}.`,
+    mig && mig.from && !mig.oldDeleted
+      ? `Biblioteca importada y verificada desde <code>${esc(mig.from)}</code> (${fmtNum(mig.messages)} correos).${desktop ? ' <a data-act="delold">Borrar la carpeta antigua</a>' : ''}`
+      : '',
+  ].filter(Boolean).join(' ');
 }
 
 $('#libList').addEventListener('click', async (e) => {
@@ -1148,17 +1155,30 @@ async function addPaths(body, url = '/api/library/add') {
   }
 }
 
+// En la app de escritorio se usan los diálogos nativos (window.pstx, ver electron/preload.js);
+// en el navegador, el diálogo de Windows que abre el servidor.
+const desktop = window.pstx && window.pstx.isDesktop ? window.pstx : null;
 $('#btnPickFiles').addEventListener('click', async () => {
   try {
-    const r = await api('/api/library/pick', { mode: 'files' });
-    if (r.paths && r.paths.length) addPaths({ paths: r.paths });
+    const paths = desktop ? await desktop.pickFiles() : (await api('/api/library/pick', { mode: 'files' })).paths;
+    if (paths && paths.length) addPaths({ paths });
   } catch (err) { libMsg(esc(err.message), true); }
 });
 $('#btnPickFolder').addEventListener('click', async () => {
   try {
-    const r = await api('/api/library/pick', { mode: 'folder' });
-    if (r.dir) addPaths({ dir: r.dir }, '/api/library/add-folder');
+    const dir = desktop ? await desktop.pickFolder() : (await api('/api/library/pick', { mode: 'folder' })).dir;
+    if (dir) addPaths({ dir }, '/api/library/add-folder');
   } catch (err) { libMsg(esc(err.message), true); }
+});
+$('#libNote').addEventListener('click', async (e) => {
+  if (!desktop) return;
+  if (e.target.closest('[data-act=datafolder]')) desktop.openDataFolder();
+  if (e.target.closest('[data-act=delold]')) {
+    const r = await desktop.deleteOldLibrary();
+    if (r && r.ok) libMsg('Se borró la biblioteca antigua.');
+    else if (r && r.error) libMsg(esc(r.error), true);
+    refreshState();
+  }
 });
 function addTyped() {
   const v = $('#pathInput').value.trim().replace(/^"|"$/g, '');

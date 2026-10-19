@@ -14,9 +14,18 @@ const Q = require('./src/query');
 const { Library, scanFolder, MAX_ACTIVE } = require('./src/library');
 const { Readers } = require('./src/readers');
 
-const PORT = Number(process.env.PORT) || 8765;
-// PSTX_DATA permite usar otra carpeta de datos (p. ej. para pruebas)
+// Modo escritorio: el servidor corre como utilityProcess de Electron (ver electron/main.js)
+const DESKTOP = !!process.parentPort;
+// PORT=0 escucha en un puerto libre (el real se informa al proceso principal)
+const PORT = process.env.PORT != null && process.env.PORT !== '' ? Number(process.env.PORT) : 8765;
+let port = PORT;
+// PSTX_DATA permite usar otra carpeta de datos (p. ej. la de la app de escritorio, o pruebas)
 const DATA_DIR = process.env.PSTX_DATA ? path.resolve(process.env.PSTX_DATA) : path.join(__dirname, 'data');
+// Token de sesión: si está definido, toda petición debe traerlo (cookie "pstx" o cabecera)
+const TOKEN = process.env.PSTX_TOKEN || '';
+// Los procesos hijos (indexador, consolidación) corren con el Node de Electron
+const CHILD_ENV = DESKTOP ? { ...process.env, ELECTRON_RUN_AS_NODE: '1' } : process.env;
+const toMain = (m) => { if (DESKTOP) process.parentPort.postMessage(m); };
 
 const lib = new Library(DATA_DIR);
 lib.reconnect();
@@ -69,7 +78,7 @@ function schedule() {
 
 function startJob(f, phase, careful) {
   const child = fork(path.join(__dirname, 'src', 'indexer.js'), [], {
-    stdio: ['ignore', 'inherit', 'inherit', 'ipc'], execArgv: ['--max-old-space-size=4096'],
+    stdio: ['ignore', 'inherit', 'inherit', 'ipc'], execArgv: ['--max-old-space-size=4096'], env: CHILD_ENV,
   });
   J.child = child;
   J.job = { fileId: f.id, phase, startedAt: Date.now(), careful };
@@ -134,7 +143,9 @@ function requestConsolidation() {
   if (J.consolidating) { J.consolidatePending = true; return; }
   const files = active().map((a) => ({ id: a.id, dbPath: lib.dbPath(lib.byId(a.id)) }));
   const sig = librarySignature();
-  const child = fork(path.join(__dirname, 'src', 'consolidate.js'), [], { stdio: ['ignore', 'inherit', 'inherit', 'ipc'], execArgv: ['--max-old-space-size=4096'] });
+  const child = fork(path.join(__dirname, 'src', 'consolidate.js'), [], {
+    stdio: ['ignore', 'inherit', 'inherit', 'ipc'], execArgv: ['--max-old-space-size=4096'], env: CHILD_ENV,
+  });
   J.consolidating = { startedAt: Date.now() };
   child.send({ libDbPath: lib.libDbPath, files, sig });
   child.on('message', (m) => {
@@ -173,14 +184,21 @@ function libraryChanged() {
 const app = express();
 app.disable('x-powered-by');
 
-// Protección contra DNS rebinding y peticiones de otros orígenes
+const hasToken = (req) => {
+  if (!TOKEN) return true;
+  if (req.headers['x-pstx-token'] === TOKEN) return true;
+  return (req.headers.cookie || '').split(/;\s*/).some((c) => c === `pstx=${TOKEN}`);
+};
+
+// Protección contra DNS rebinding, peticiones de otros orígenes y (en escritorio) de otros programas
 app.use((req, res, next) => {
   const host = (req.headers.host || '').toLowerCase();
-  if (host !== `localhost:${PORT}` && host !== `127.0.0.1:${PORT}`) return res.status(403).send('Host no permitido');
+  if (host !== `localhost:${port}` && host !== `127.0.0.1:${port}`) return res.status(403).send('Host no permitido');
+  if (!hasToken(req)) return res.status(403).send('Acceso no autorizado');
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     if (!req.is('application/json')) return res.status(415).send('Se requiere JSON');
     const origin = req.headers.origin;
-    if (origin && origin !== `http://localhost:${PORT}` && origin !== `http://127.0.0.1:${PORT}`) return res.status(403).send('Origen no permitido');
+    if (origin && origin !== `http://localhost:${port}` && origin !== `http://127.0.0.1:${port}`) return res.status(403).send('Origen no permitido');
   }
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
@@ -424,6 +442,11 @@ function msgFolderName(row) {
   return safeName(`${fmtDate(row.date).replace(':', 'h').replace(' ', '_')} - ${row.subject || '(sin asunto)'} - ${row.sender_name || ''}`, 110);
 }
 
+// Datos de la importación desde una versión anterior (los escribe electron/migrate.js)
+function readMigration() {
+  try { return JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'migration.json'), 'utf8')); } catch { return null; }
+}
+
 // ================================================================ API: biblioteca
 
 app.get('/api/state', wrap(async (req, res) => {
@@ -454,6 +477,9 @@ app.get('/api/state', wrap(async (req, res) => {
     lastConsolidation: J.lastConsolidation,
     totals: { messages: files.filter((f) => f.active).reduce((s, f) => s + f.status.indexed, 0) },
     maxActive: MAX_ACTIVE,
+    desktop: DESKTOP,
+    dataDir: DATA_DIR,
+    migration: readMigration(),
   });
 }));
 
@@ -860,28 +886,72 @@ ${parts.join('\n') || '<p>No hay correos para imprimir.</p>'}
 
 app.use(express.static(path.join(__dirname, 'public'), { index: 'index.html' }));
 
+function addInitialFiles(paths) {
+  const list = paths.filter((a) => /\.(pst|ost)$/i.test(a));
+  if (!list.length) return null;
+  const r = lib.add(list);
+  for (const sk of r.skipped) if (!/ya está/.test(sk.reason)) console.error(`${sk.path}: ${sk.reason}`);
+  if (r.added.length) libraryChanged();
+  return r;
+}
+
+// Resumen para la bandeja del sistema (modo escritorio)
+function trayStatus() {
+  const job = J.job && lib.byId(J.job.fileId);
+  let pct = null;
+  if (job) {
+    const P = J.progress.get(job.id) || {};
+    pct = J.job.phase === 'messages' ? (P.total ? (P.done / P.total) * 100 : 0) : (P.attTotal ? (P.attDone / P.attTotal) * 100 : 0);
+  }
+  return {
+    type: 'status',
+    indexing: !!J.job,
+    consolidating: !!J.consolidating,
+    paused: lib.paused,
+    pending: lib.files.some((f) => f.enabled && lib.exists(f) && !J.failed.has(f.id) && !fileStatus(f).attComplete),
+    job: job ? { name: job.name, phase: J.job.phase, pct: Math.round(pct) } : null,
+  };
+}
+
 const server = app.listen(PORT, '127.0.0.1', () => {
-  const url = `http://localhost:${PORT}/`;
+  port = server.address().port;
+  const url = `http://localhost:${port}/`;
   console.log(`PST Explorer listo en ${url}`);
   // archivos pasados por línea de comandos se agregan a la biblioteca
-  const initial = process.argv.slice(2).filter((a) => /\.(pst|ost)$/i.test(a));
-  if (initial.length) {
-    const r = lib.add(initial);
-    for (const s of r.skipped) if (!/ya está/.test(s.reason)) console.error(`${s.path}: ${s.reason}`);
-    if (r.added.length) lib.reconnect();
-  }
+  addInitialFiles(process.argv.slice(2));
   if (consolidationStale()) requestConsolidation();
   schedule();
-  if (process.argv.includes('--open') && process.platform === 'win32') execFile('cmd', ['/c', 'start', '', url]);
+  toMain({ type: 'ready', port });
+  if (!DESKTOP && process.argv.includes('--open') && process.platform === 'win32') execFile('cmd', ['/c', 'start', '', url]);
 });
+
+if (DESKTOP) {
+  // mensajes del proceso principal de Electron
+  process.parentPort.on('message', ({ data: m }) => {
+    if (!m) return;
+    if (m.type === 'pause') {
+      lib.paused = !!m.paused;
+      lib.save();
+      if (lib.paused) stopJob(); else schedule();
+    } else if (m.type === 'add') {
+      addInitialFiles(m.paths || []);
+    } else if (m.type === 'shutdown') {
+      stopJob();
+      process.exit(0);
+    }
+    toMain(trayStatus());
+  });
+  setInterval(() => toMain(trayStatus()), 2000).unref();
+}
 
 // Si ya hay una instancia abierta, solo abrir el navegador
 server.on('error', (e) => {
-  if (e.code === 'EADDRINUSE') {
+  if (e.code === 'EADDRINUSE' && !DESKTOP) {
     console.log(`PST Explorer ya está en ejecución: http://localhost:${PORT}/`);
     if (process.platform === 'win32') execFile('cmd', ['/c', 'start', '', `http://localhost:${PORT}/`]);
     setTimeout(() => process.exit(0), 500);
   } else {
+    toMain({ type: 'fatal', error: e.message });
     throw e;
   }
 });
