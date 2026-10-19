@@ -104,7 +104,8 @@
       ],
       "language": "3082",
       "deleteAppDataOnUninstall": false,
-      "include": "build/installer.nsh"
+      "include": "build/installer.nsh",
+      "artifactName": "PST-Explorer-Setup-${version}.${ext}"
     },
     "publish": [
       {
