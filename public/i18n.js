@@ -1,11 +1,11 @@
 'use strict';
-/* PST Explorer — textos de la interfaz en inglés (predeterminado) y español.
-   Uso en app.js: t('clave', { n, name… }). Un texto { one, other } se elige según n.
+/* PST Explorer — UI texts in English (default) and Spanish.
+   Use in app.js: t('key', { n, name… }). A { one, other } text is chosen by n.
    En index.html: data-i18n (texto), data-i18n-html (HTML propio de la app),
    data-i18n-title, data-i18n-ph (placeholder). */
 window.I18N = {
   en: {
-    // cabecera y búsqueda
+    // header and search
     'top.library': 'Library',
     'top.libraryTitle': 'PST files in the library',
     'search.ph': 'Search emails and attachments…   (shortcut: /)',
@@ -31,7 +31,7 @@ window.I18N = {
     'menu.compare': 'Compare files (duplicates)…',
     'menu.pause': 'Pause indexing',
     'menu.resume': 'Resume indexing',
-    // filtros avanzados
+    // advanced filters
     'adv.from': 'From',
     'adv.to': 'To / CC',
     'adv.nameOrEmail': 'name or email',
@@ -58,14 +58,14 @@ window.I18N = {
     'adv.dupsTitle': 'The same email saved in several backups is shown only once',
     'adv.clear': 'Clear',
     'adv.search': 'Search',
-    // prefijos de campo que agrega el formulario avanzado (deben existir en src/db.js)
+    // field prefixes added by the advanced form (must exist in src/db.js)
     'field.from': 'from:',
     'field.to': 'to:',
     'field.subject': 'subject:',
     'field.body': 'body:',
     'field.attachment': 'attachment:',
     'field.content': 'content:',
-    // chips de filtros
+    // filter chips
     'chip.dateFrom': 'Since {v}',
     'chip.dateTo': 'Until {v}',
     'chip.att': 'With attachments',
@@ -76,7 +76,7 @@ window.I18N = {
     'chip.dups': 'With duplicate copies',
     'chip.unique': 'Only items not in other files',
     'chip.remove': 'Remove',
-    // barra lateral y lista
+    // sidebar and list
     'view.mail': 'Emails',
     'view.threads': 'Conversations',
     'view.attachments': 'Attachments',
@@ -126,7 +126,7 @@ window.I18N = {
     'row.inAttTitle': 'The match is inside an attachment',
     'row.attCount': { one: '{n} attachment', other: '{n} attachments' },
     'row.viewConv': { one: 'View conversation ({n} email)', other: 'View conversation ({n} emails)' },
-    // lector
+    // reader
     'reader.welcome': 'Welcome',
     'reader.welcomeText': 'Add your <b>.pst</b> or <b>.ost</b> files to the library. They are indexed one by one in the background (you can browse and search meanwhile) and the indexes are saved: next time everything is ready instantly.',
     'reader.addFiles': 'Add files…',
@@ -164,7 +164,7 @@ window.I18N = {
     'reader.hits': { one: '{n} match', other: '{n} matches' },
     'reader.loading': 'Loading…',
     'reader.headersTitle': 'Internet headers',
-    // conversación
+    // conversation
     'thread.empty': 'The conversation has no emails in the active files.',
     'thread.print': 'Print conversation',
     'thread.attZip': 'Conversation attachments (ZIP)',
@@ -180,7 +180,7 @@ window.I18N = {
     'thread.fileName': 'conversation',
     'thread.zipAtt': 'Attachments - {subject}',
     'thread.zipEml': 'Conversation - {subject}',
-    // exportar
+    // export
     'export.none': 'There are no emails to export',
     'export.printFirst': 'The first 200 of {n} emails will be printed',
     'export.confirm': '{n} emails will be exported. It may take quite a while and create a large file. Continue?',
@@ -188,7 +188,7 @@ window.I18N = {
     'export.results': 'Search results',
     'export.attName': 'Attachments - {label}',
     'export.emlName': 'Emails - {label}',
-    // biblioteca
+    // library
     'lib.title': 'File library',
     'lib.close': 'Close',
     'lib.addFiles': 'Add files…',
@@ -244,14 +244,14 @@ window.I18N = {
     'lib.addAllHere': 'Add all PST files in this folder',
     'lib.locations': 'Locations',
     'lib.addOne': 'add',
-    // progreso en la cabecera
+    // header progress
     'prog.indexing': 'Indexing {name} ({pos}/{count}) · {detail}',
     'prog.preparing': 'preparing…',
     'prog.attachments': 'Attachments of {name} ({pos}/{count}) · {pct}% {eta}',
     'prog.paused': '⏸ Indexing paused',
     'prog.consolidating': 'Finding duplicate emails…',
     'prog.ready': '✓ {files} · {messages} emails',
-    // comparar archivos
+    // compare files
     'cmp.title': 'Compare files',
     'cmp.intro': 'For each file: how many items are not in any other backup (unique information) and how many already have a copy in another. A file with no unique items can be discarded without losing emails, as long as you keep the files indicated.',
     'cmp.recalc': 'Recalculate',
@@ -289,7 +289,7 @@ window.I18N = {
     'cmp.cellTitle': '{n} of the {total} items in {a} are also in {b}',
     'cmp.summary': '{files} compared · {items} · {unique} unique',
     'cmp.items': { one: '{n} item', other: '{n} items' },
-    // ayuda de búsqueda
+    // search help
     'help.title': 'How to search',
     'help.intro': 'Search looks in the subject, sender, recipients, body, attachment names and the <b>text inside attachments</b> (PDF, Word, Excel, PowerPoint, TXT/CSV/XML/HTML and attached emails). It ignores case and accents.',
     'help.table': '<tr><td><code>invoice march</code></td><td>contains both words (each word also matches longer forms: <i>invoice</i> finds <i>invoices</i>, <i>invoiced</i>)</td></tr>'

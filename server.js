@@ -1,7 +1,7 @@
 'use strict';
-// PST Explorer — servidor local. Solo escucha en 127.0.0.1.
-// Trabaja con una biblioteca de varios PST: cada uno tiene su índice, una cola
-// los indexa de a uno en segundo plano y las búsquedas recorren todos a la vez.
+// PST Explorer — local server. Listens on 127.0.0.1 only.
+// Works with a library of several PSTs: each one has its index, a queue indexes
+// them one at a time in the background and searches cover all of them at once.
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -16,20 +16,20 @@ const { Readers } = require('./src/readers');
 const I = require('./src/i18n');
 const { t } = I;
 
-// Modo escritorio: el servidor corre como utilityProcess de Electron (ver electron/main.js)
+// Desktop mode: the server runs as an Electron utilityProcess (see electron/main.js)
 const DESKTOP = !!process.parentPort;
-// PORT=0 escucha en un puerto libre (el real se informa al proceso principal)
+// PORT=0 listens on a free port (the real one is reported to the main process)
 const PORT = process.env.PORT != null && process.env.PORT !== '' ? Number(process.env.PORT) : 8765;
 let port = PORT;
-// PSTX_DATA permite usar otra carpeta de datos (p. ej. la de la app de escritorio, o pruebas)
+// PSTX_DATA allows another data folder (e.g. the desktop app's, or tests)
 const DATA_DIR = process.env.PSTX_DATA ? path.resolve(process.env.PSTX_DATA) : path.join(__dirname, 'data');
-// Token de sesión: si está definido, toda petición debe traerlo (cookie "pstx" o cabecera)
+// Session token: if set, every request must carry it ("pstx" cookie or header)
 const TOKEN = process.env.PSTX_TOKEN || '';
-// Los procesos hijos (indexador, consolidación) corren con el Node de Electron
+// Child processes (indexer, consolidation) run with Electron's Node
 const CHILD_ENV = DESKTOP ? { ...process.env, ELECTRON_RUN_AS_NODE: '1' } : process.env;
 const toMain = (m) => { if (DESKTOP) process.parentPort.postMessage(m); };
 
-// Preferencias (idioma) junto a la biblioteca: se conservan al actualizar la app
+// Preferences (language) next to the library: kept when the app is updated
 const settings = I.loadSettings(DATA_DIR);
 I.setLang(settings.lang);
 function setLanguage(lang) {
@@ -48,14 +48,14 @@ const active = () => lib.active;
 const fileName = (fid) => (lib.byId(fid) || {}).name || `#${fid}`;
 const httpError = (status, msg) => Object.assign(new Error(msg), { status });
 
-// ================================================================ cola de indexado
+// ================================================================ indexing queue
 
 const J = {
-  child: null, // proceso indexador en curso
+  child: null, // indexer process running
   job: null, // { fileId, phase, startedAt, doneAtStart }
-  progress: new Map(), // fileId -> último avance informado
+  progress: new Map(), // fileId -> last reported progress
   restarts: new Map(),
-  failed: new Map(), // fileId -> mensaje de error (no se reintenta hasta reiniciar)
+  failed: new Map(), // fileId -> error message (not retried until restart)
   consolidating: null,
   consolidatePending: false,
   lastConsolidation: null,
@@ -77,7 +77,7 @@ function schedule() {
   if (J.child || lib.paused) return;
   const cands = lib.files.filter((f) => f.enabled && !J.failed.has(f.id) && lib.exists(f));
   const st = new Map(cands.map((f) => [f.id, fileStatus(f)]));
-  // primero los correos de todos los archivos (del más chico al más grande), luego el contenido de adjuntos
+  // first the emails of all files (smallest to largest), then the attachment content
   let phase = 'messages';
   let next = cands.filter((f) => !st.get(f.id).complete).sort((a, b) => a.size - b.size)[0];
   if (!next) {
@@ -119,7 +119,7 @@ function startJob(f, phase, careful) {
     else if (m.type === 'error') failure = m.error;
   });
   child.on('exit', (code, signal) => {
-    if (J.child !== child) return; // detenido a propósito
+    if (J.child !== child) return; // stopped on purpose
     J.child = null;
     J.job = null;
     if (finished) {
@@ -128,12 +128,12 @@ function startJob(f, phase, careful) {
       if (phase === 'messages') requestConsolidation();
     } else if (failure) {
       J.failed.set(f.id, failure);
-      console.error(`Error indexando ${f.name}: ${failure}`);
+      console.error(`Error indexing ${f.name}: ${failure}`);
     } else {
-      // caída del lector (p. ej. un elemento dañado): reanudar en modo cuidadoso
+      // the reader crashed (e.g. a damaged item): resume in careful mode
       const n = (J.restarts.get(f.id) || 0) + 1;
       J.restarts.set(f.id, n);
-      console.error(`Indexador detenido en ${f.name} (código ${code ?? signal}); reanudando en modo cuidadoso (${n})…`);
+      console.error(`Indexer stopped on ${f.name} (code ${code ?? signal}); resuming in careful mode (${n})…`);
       if (n <= 25) return startJob(f, phase, true);
       J.failed.set(f.id, t('err.indexerCrashed'));
     }
@@ -150,7 +150,7 @@ function stopJob(fileId) {
   return true;
 }
 
-// Consolidación: copias repetidas entre respaldos y conversaciones globales
+// Consolidation: duplicate copies across backups and global conversations
 function requestConsolidation() {
   if (J.consolidating) { J.consolidatePending = true; return; }
   const files = active().map((a) => ({ id: a.id, dbPath: lib.dbPath(lib.byId(a.id)) }));
@@ -162,7 +162,7 @@ function requestConsolidation() {
   child.send({ libDbPath: lib.libDbPath, files, sig });
   child.on('message', (m) => {
     if (m.type === 'done') J.lastConsolidation = { ...m.stats, at: Date.now() };
-    if (m.type === 'error') console.error('Error al consolidar:', m.error);
+    if (m.type === 'error') console.error('Consolidation error:', m.error);
   });
   child.on('exit', () => {
     J.consolidating = null;
@@ -170,13 +170,13 @@ function requestConsolidation() {
   });
 }
 
-// Firma de la biblioteca: versión del cálculo, archivos activos y cuántos correos tiene indexados
-// cada uno. Si cambia la versión (p. ej. tras una actualización que agrega datos a la consolidación),
-// se recalcula solo library.db: los índices de cada PST no se tocan.
+// Library signature: calculation version, active files and how many emails each one
+// has indexed. If the version changes (e.g. after an update that adds data to the
+// consolidation), only library.db is recalculated: the per-PST indexes are not touched.
 const CONSOLIDATE_VERSION = 'c2';
 const librarySignature = () => CONSOLIDATE_VERSION + '|' + active().map((a) => `${a.id}:${fileStatus(lib.byId(a.id)).indexed}`).join(',');
 
-// ¿la consolidación guardada corresponde a los archivos activos actuales?
+// does the saved consolidation match the current active files?
 function consolidationStale() {
   try {
     const r = conn().prepare("SELECT v FROM main.meta WHERE k = 'sig'").get();
@@ -194,7 +194,7 @@ function libraryChanged() {
   schedule();
 }
 
-// ================================================================ utilidades HTTP
+// ================================================================ HTTP utilities
 
 const app = express();
 app.disable('x-powered-by');
@@ -205,7 +205,7 @@ const hasToken = (req) => {
   return (req.headers.cookie || '').split(/;\s*/).some((c) => c === `pstx=${TOKEN}`);
 };
 
-// Protección contra DNS rebinding, peticiones de otros orígenes y (en escritorio) de otros programas
+// Protection against DNS rebinding, requests from other origins and (on desktop) from other programs
 app.use((req, res, next) => {
   const host = (req.headers.host || '').toLowerCase();
   if (host !== `localhost:${port}` && host !== `127.0.0.1:${port}`) return res.status(403).send('Host not allowed');
@@ -279,7 +279,7 @@ const aliasOf = (fid) => {
 };
 const withRefs = (rows) => rows.map((r) => ({ ...r, ref: `${r.src}-${r.id ?? r.msg_id}` }));
 
-// ================================================================ detalle de mensaje
+// ================================================================ message details
 
 function indexRow(ref) {
   const p = Q.parseMsgRef(ref);
@@ -307,7 +307,7 @@ function messageInfo(ref) {
     msg = readers.message(ref);
   } catch (e) {
     if (e.status !== 410 || !row || common.embedded) throw e;
-    // El PST no está disponible (p. ej. disco desconectado): mostrar lo que hay en el índice
+    // The PST is not available (e.g. drive disconnected): show what the index has
     const atts = conn().prepare(`SELECT idx, name, ext, size, mime, cid, embedded, hidden FROM ${A}.attachments WHERE msg_id = ? ORDER BY idx`).all(p.nid);
     const split = (s) => (s || '').split(/;\s*/).filter(Boolean).map((x) => {
       const mm = /^(.*?)\s*<([^>]+)>$/.exec(x);
@@ -342,7 +342,7 @@ function messageInfo(ref) {
   };
 }
 
-// HTML del cuerpo listo para mostrarse aislado (iframe sandbox) o imprimirse
+// Body HTML ready to be shown isolated (sandboxed iframe) or printed
 function bodyHtml(ref, { forPrint = false } = {}) {
   let msg;
   try {
@@ -361,7 +361,7 @@ function bodyHtml(ref, { forPrint = false } = {}) {
     return `<pre class="pst-plain">${linked}</pre>`;
   }
   let html = body.content;
-  // imágenes en línea cid: -> URL local del adjunto
+  // inline cid: images -> local URL of the attachment
   html = html.replace(/(["'(=]\s*)cid:([^"')\s>]+)/gi, (m, pre, cid) => {
     let c;
     try { c = decodeURIComponent(cid); } catch { c = cid; }
@@ -369,7 +369,7 @@ function bodyHtml(ref, { forPrint = false } = {}) {
     const a = atts.find((x) => x.cid && x.cid.toLowerCase() === c) || atts.find((x) => x.name.toLowerCase() === c);
     return a ? `${pre}${base}${a.idx}?inline=1` : m;
   });
-  // limpieza: scripts, meta refresh, base, formularios y manejadores (el CSP también los bloquea)
+  // cleanup: scripts, meta refresh, base, forms and handlers (the CSP blocks them too)
   html = html
     .replace(/<script\b[\s\S]*?<\/script\s*>/gi, '')
     .replace(/<(meta|base|link)\b[^>]*>/gi, '')
@@ -435,7 +435,7 @@ async function buildEml(msg) {
   return new Promise((resolve, reject) => mail.compile().build((err, buf) => (err ? reject(err) : resolve(buf))));
 }
 
-// ================================================================ ZIP en streaming
+// ================================================================ streaming ZIP
 
 function startZip(res, name) {
   res.setHeader('Content-Type', 'application/zip');
@@ -457,12 +457,12 @@ function msgFolderName(row) {
   return safeName(`${fmtDate(row.date).replace(':', 'h').replace(' ', '_')} - ${row.subject || t('file.noSubject')} - ${row.sender_name || ''}`, 110);
 }
 
-// Datos de la importación desde una versión anterior (los escribe electron/migrate.js)
+// Data of the import from a previous version (written by electron/migrate.js)
 function readMigration() {
   try { return JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'migration.json'), 'utf8')); } catch { return null; }
 }
 
-// ================================================================ API: biblioteca
+// ================================================================ API: library
 
 app.get('/api/state', wrap(async (req, res) => {
   const files = lib.files.map((f) => {
@@ -547,7 +547,7 @@ app.post('/api/library/reindex', wrap(async (req, res) => {
   readers.close(f.id);
   J.failed.delete(f.id);
   J.restarts.delete(f.id);
-  lib.conn.close(); // soltar el índice para poder borrarlo
+  lib.conn.close(); // release the index so it can be deleted
   lib.conn = null;
   lib.resetIndex(f);
   libraryChanged();
@@ -569,7 +569,7 @@ app.post('/api/library/pause', wrap(async (req, res) => {
   res.json({ ok: true, paused: lib.paused });
 }));
 
-// Diálogos nativos de Windows para elegir archivos o una carpeta
+// Native Windows dialogs to choose files or a folder
 app.post('/api/library/pick', wrap(async (req, res) => {
   if (process.platform !== 'win32') throw httpError(501, t('err.windowsOnly'));
   const folder = req.body.mode === 'folder';
@@ -594,7 +594,7 @@ app.post('/api/library/pick', wrap(async (req, res) => {
   });
 }));
 
-// Explorador de carpetas (alternativa al diálogo nativo)
+// Folder browser (alternative to the native dialog)
 app.get('/api/browse', wrap(async (req, res) => {
   let dir = String(req.query.dir || '');
   if (!dir) {
@@ -623,10 +623,10 @@ app.get('/api/browse', wrap(async (req, res) => {
   res.json({ dir, parent: parent === dir ? '' : parent, entries });
 }));
 
-// ================================================================ API: comparación
+// ================================================================ API: comparison
 
-// Qué tiene cada archivo que no esté en los demás, cuánto se solapan y cuáles
-// podrían descartarse (ver src/consolidate.js). Repetido = mismo Message-ID.
+// What each file has that the others do not, how much they overlap and which ones
+// could be discarded (see src/consolidate.js). Duplicate = same Message-ID.
 app.get('/api/compare', wrap(async (req, res) => {
   const c = conn();
   const cmp = new Map(c.prepare('SELECT * FROM main.cmp_file').all().map((r) => [r.f, r]));
@@ -649,7 +649,7 @@ app.get('/api/compare', wrap(async (req, res) => {
       verdict,
     };
   });
-  // dos archivos «descartables» que dependen uno del otro: no se pueden descartar ambos
+  // two "discardable" files that depend on each other: both cannot be discarded
   const discardable = new Set(files.filter((f) => f.verdict.kind === 'discard').map((f) => f.id));
   for (const f of files) {
     if (f.verdict.kind === 'discard') f.verdict.mutual = f.verdict.keepWith.filter((k) => discardable.has(k.id)).map((k) => k.id);
@@ -662,7 +662,7 @@ app.post('/api/compare/refresh', wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
-// ================================================================ API: datos
+// ================================================================ API: data
 
 const unreadCache = new Map(); // fid -> { indexed, map }
 app.get('/api/folders', wrap(async (req, res) => {
@@ -705,7 +705,7 @@ app.get('/api/attachments', wrap(async (req, res) => {
   res.json({ ...r, rows: withRefs(r.rows) });
 }));
 
-// Conteo exacto (puede tardar unos segundos con búsquedas muy amplias)
+// Exact count (may take a few seconds with very broad searches)
 app.get('/api/count', wrap(async (req, res) => {
   const fn = { threads: Q.threads, attachments: Q.attachments }[req.query.view] || Q.messages;
   res.json({ total: fn(conn(), active(), req.query, { exact: true }).total });
@@ -713,7 +713,7 @@ app.get('/api/count', wrap(async (req, res) => {
 
 app.get('/api/thread', wrap(async (req, res) => {
   const rows = Q.thread(conn(), active(), String(req.query.key || ''), { dups: req.query.dups === '1' });
-  // copias del mismo correo (mismo Message-ID) dentro de un mismo archivo
+  // copies of the same email (same Message-ID) inside the same file
   const seen = new Map();
   for (const r of rows) {
     r.ref = `${r.src}-${r.id}`;
@@ -758,7 +758,7 @@ app.get('/api/message/:ref/att/:idx', wrap(async (req, res) => {
   } else {
     data = R.readAttachmentData(msg, idx);
   }
-  // Solo se muestran en el navegador tipos que no pueden ejecutar código
+  // Only types that cannot run code are shown in the browser
   const inlineOk = /^image\/(png|jpe?g|gif|bmp|webp)$/.test(mime) || mime === 'application/pdf' || mime === 'text/plain';
   const inline = req.query.inline === '1' && inlineOk;
   res.setHeader('Content-Type', inline ? (mime === 'text/plain' ? 'text/plain; charset=utf-8' : mime) : 'application/octet-stream');
@@ -777,7 +777,7 @@ app.get('/api/message/:ref/eml', wrap(async (req, res) => {
   res.end(buf);
 }));
 
-// ZIP con los adjuntos de un mensaje
+// ZIP with the attachments of one message
 app.get('/api/message/:ref/attachments.zip', wrap(async (req, res) => {
   const msg = readers.message(req.params.ref);
   const body = R.getBody(msg);
@@ -794,13 +794,13 @@ app.get('/api/message/:ref/attachments.zip', wrap(async (req, res) => {
   await z.zip.finalize();
 }));
 
-// ================================================================ exportaciones masivas
+// ================================================================ bulk exports
 
-// Todas las filas que cumplen los filtros (para exportar)
+// All rows that match the filters (for exporting)
 function selectRows(q) {
   return Q.messages(conn(), active(), q, { limit: null }).rows;
 }
-// Agrupa por archivo para no alternar continuamente entre PST al leerlos
+// Groups by file so as not to keep switching between PSTs while reading
 const byFile = (rows) => [...rows].sort((a, b) => (a.src - b.src) || ((a.date || 0) - (b.date || 0)));
 
 app.get('/api/export/csv', wrap(async (req, res) => {
@@ -825,10 +825,10 @@ app.get('/api/export/csv', wrap(async (req, res) => {
   res.end('﻿' + lines.join('\r\n'));
 }));
 
-// Adjuntos de los correos filtrados (o de un hilo, o una selección) en un ZIP
+// Attachments of the filtered emails (or of a thread, or a selection) in a ZIP
 app.get('/api/export/attachments.zip', wrap(async (req, res) => {
   const q = { ...req.query, att: '1' };
-  // pairs=fid-nid:idx,... -> solo esos adjuntos (selección manual en la vista de adjuntos)
+  // pairs=fid-nid:idx,... -> only those attachments (manual selection in the attachments view)
   let only = null;
   if (req.query.pairs) {
     only = new Map();
@@ -865,13 +865,13 @@ app.get('/api/export/attachments.zip', wrap(async (req, res) => {
         const data = a.embedded ? await buildEml(msg.getAttachment(a.idx).embeddedPSTMessage) : R.readAttachmentData(msg, a.idx);
         const base = safeName(a.embedded ? a.name.replace(/\.msg$/i, '.eml') : a.name);
         await z.add(data, uniqueName(names, dir + (flat ? `${fmtDate(r.date, false)} ${base}` : base)), r.date);
-      } catch { /* adjunto ilegible: se omite */ }
+      } catch { /* unreadable attachment: skipped */ }
     }
   }
   await z.zip.finalize();
 }));
 
-// Correos filtrados (o un hilo) como archivos .eml en un ZIP
+// Filtered emails (or a thread) as .eml files in a ZIP
 app.get('/api/export/eml.zip', wrap(async (req, res) => {
   const rows = byFile(selectRows(req.query));
   const folders = new Map();
@@ -885,12 +885,12 @@ app.get('/api/export/eml.zip', wrap(async (req, res) => {
       const fpath = [fileName(r.src).replace(/\.(pst|ost)$/i, ''), ...(folders.get(`${r.src}:${r.folder_id}`) || '').split('/')]
         .filter(Boolean).map((s) => safeName(s, 60)).join('/');
       await z.add(await buildEml(msg), uniqueName(names, `${fpath}/${msgFolderName(r)}.eml`), r.date);
-    } catch { /* se omite */ }
+    } catch { /* skipped */ }
   }
   await z.zip.finalize();
 }));
 
-// ================================================================ impresión
+// ================================================================ printing
 
 app.get('/print', wrap(async (req, res) => {
   let refs = [];
@@ -943,7 +943,7 @@ ${parts.join('\n') || `<p>${esc(t('print.none'))}</p>`}
 </script></body></html>`);
 }));
 
-// ================================================================ estáticos e inicio
+// ================================================================ static files and startup
 
 app.use(express.static(path.join(__dirname, 'public'), { index: 'index.html' }));
 
@@ -956,7 +956,7 @@ function addInitialFiles(paths) {
   return r;
 }
 
-// Resumen para la bandeja del sistema (modo escritorio)
+// Summary for the system tray (desktop mode)
 function trayStatus() {
   const job = J.job && lib.byId(J.job.fileId);
   let pct = null;
@@ -977,8 +977,8 @@ function trayStatus() {
 const server = app.listen(PORT, '127.0.0.1', () => {
   port = server.address().port;
   const url = `http://localhost:${port}/`;
-  console.log(`PST Explorer listo en ${url}`);
-  // archivos pasados por línea de comandos se agregan a la biblioteca
+  console.log(`PST Explorer ready at ${url}`);
+  // files passed on the command line are added to the library
   addInitialFiles(process.argv.slice(2));
   if (consolidationStale()) requestConsolidation();
   schedule();
@@ -987,7 +987,7 @@ const server = app.listen(PORT, '127.0.0.1', () => {
 });
 
 if (DESKTOP) {
-  // mensajes del proceso principal de Electron
+  // messages from the Electron main process
   process.parentPort.on('message', ({ data: m }) => {
     if (!m) return;
     if (m.type === 'pause') {
@@ -995,7 +995,7 @@ if (DESKTOP) {
       lib.save();
       if (lib.paused) stopJob(); else schedule();
     } else if (m.type === 'lang') {
-      try { setLanguage(m.lang); } catch { /* idioma desconocido */ }
+      try { setLanguage(m.lang); } catch { /* unknown language */ }
     } else if (m.type === 'add') {
       addInitialFiles(m.paths || []);
     } else if (m.type === 'shutdown') {
@@ -1007,10 +1007,10 @@ if (DESKTOP) {
   setInterval(() => toMain(trayStatus()), 2000).unref();
 }
 
-// Si ya hay una instancia abierta, solo abrir el navegador
+// If an instance is already open, just open the browser
 server.on('error', (e) => {
   if (e.code === 'EADDRINUSE' && !DESKTOP) {
-    console.log(`PST Explorer ya está en ejecución: http://localhost:${PORT}/`);
+    console.log(`PST Explorer is already running: http://localhost:${PORT}/`);
     if (process.platform === 'win32') execFile('cmd', ['/c', 'start', '', `http://localhost:${PORT}/`]);
     setTimeout(() => process.exit(0), 500);
   } else {
@@ -1019,7 +1019,7 @@ server.on('error', (e) => {
   }
 });
 
-// Al cerrar, detener el indexador (se reanuda en el próximo inicio)
+// On exit, stop the indexer (it resumes on the next start)
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGBREAK']) {
   process.on(sig, () => { stopJob(); process.exit(0); });
 }

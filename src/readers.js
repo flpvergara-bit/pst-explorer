@@ -1,8 +1,8 @@
 'use strict';
-// Lectores de PST abiertos para ver correos de varios archivos.
-// pst-extractor guarda el mapa de propiedades con nombre en una variable
-// estática compartida por todos los archivos; al pasar de un archivo a otro se
-// reconstruye para el archivo que se va a leer.
+// Open PST readers to view emails from several files.
+// pst-extractor keeps the named-property map in a static variable shared
+// by all files; when switching from one file to another it is rebuilt for
+// the file about to be read.
 const fs = require('fs');
 const { PSTFile } = require('pst-extractor');
 const { NodeMap } = require('pst-extractor/dist/NodeMap.class');
@@ -12,7 +12,7 @@ const { t } = require('./i18n');
 class Readers {
   constructor(lib) {
     this.lib = lib;
-    this.open = new Map(); // id archivo -> PSTFile
+    this.open = new Map(); // file id -> PSTFile
     this.current = null;
     this.cache = new Map(); // "fid-ref" -> PSTMessage (pocos, LRU)
   }
@@ -49,7 +49,7 @@ class Readers {
     const m = /^(\d+)-(\d+(?:\.\d+)*)$/.exec(String(ref));
     if (!m) throw new R.NotFound(t('err.badRef'));
     const fid = Number(m[1]);
-    const pst = this.pst(fid); // también deja activo el mapa de este archivo
+    const pst = this.pst(fid); // also makes this file's map active
     let msg = this.cache.get(ref);
     if (msg) {
       this.cache.delete(ref);

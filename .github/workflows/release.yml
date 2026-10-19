@@ -1,9 +1,9 @@
-name: Publicar instalador
+name: Publish installer
 
-# Al subir una etiqueta de versión (por ejemplo v1.2.0) se compila el instalador
-# de Windows y se publica en GitHub Releases; la app instalada se actualiza sola.
-# Se compila sin publicar y luego se sube todo en un solo paso con gh, porque la
-# publicación directa de electron-builder llegó a crear dos releases a la vez.
+# Pushing a version tag (for example v1.2.0) builds the Windows installer
+# and publishes it to GitHub Releases; the installed app updates itself.
+# It builds without publishing and then uploads everything in one step with gh,
+# because electron-builder's direct publishing once created two releases at once.
 on:
   push:
     tags: ['v*']
@@ -21,9 +21,9 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - name: Compilar instalador
+      - name: Build installer
         run: npx electron-builder --win --publish never
-      - name: Publicar en Releases
+      - name: Publish to Releases
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -31,4 +31,4 @@ jobs:
           gh release create "${{ github.ref_name }}" \
             dist/PST-Explorer-Setup-*.exe dist/PST-Explorer-Setup-*.exe.blockmap dist/latest.yml \
             --title "PST Explorer ${{ github.ref_name }}" \
-            --notes "Instalador para Windows: descarga PST-Explorer-Setup-*.exe. Si ya tienes PST Explorer instalado, se actualiza solo."
+            --notes "Windows installer: download PST-Explorer-Setup-*.exe. If PST Explorer is already installed, it updates itself."

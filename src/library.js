@@ -1,14 +1,14 @@
 'use strict';
-// Biblioteca: el conjunto de PST que se revisan juntos. Cada archivo tiene su
-// propio índice (data/index/<huella>.db). La conexión de consultas abre
-// data/library.db y le adjunta los índices activos como f<id>.
+// Library: the set of PSTs reviewed together. Each file has its own
+// index (data/index/<fingerprint>.db). The query connection opens
+// data/library.db and attaches the active indexes to it as f<id>.
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const D = require('./db');
 const { t } = require('./i18n');
 
-const MAX_ACTIVE = 10; // límite de bases adjuntas de SQLite
+const MAX_ACTIVE = 10; // SQLite limit of attached databases
 
 class Library {
   constructor(dataDir) {
@@ -31,7 +31,7 @@ class Library {
       this.files = j.files || [];
       this.nextId = j.nextId || this.files.reduce((m, f) => Math.max(m, f.id + 1), 1);
       this.paused = !!j.paused;
-    } catch { /* biblioteca nueva */ }
+    } catch { /* new library */ }
   }
 
   save() {
@@ -44,8 +44,8 @@ class Library {
   dbPath(f) { return path.join(this.indexDir, f.key + '.db'); }
   exists(f) { try { return fs.statSync(f.path).isFile(); } catch { return false; } }
 
-  // Agrega archivos. Si el contenido ya está en la biblioteca (misma huella),
-  // solo se actualiza la ruta (útil si el respaldo se movió de disco).
+  // Adds files. If the content is already in the library (same fingerprint),
+  // only the path is updated (useful if the backup moved to another drive).
   add(paths) {
     const added = [];
     const skipped = [];
@@ -74,7 +74,7 @@ class Library {
         continue;
       }
       const f = { id: this.nextId++, path: p, name: path.basename(p), size: st.size, key, enabled: true, addedAt: new Date().toISOString() };
-      // crear (o reutilizar) el índice
+      // create (or reuse) the index
       const db = D.openDb(this.dbPath(f));
       let ok = false;
       try { ok = D.getMeta(db, 'schema') === D.SCHEMA_VERSION; } catch { ok = false; }
@@ -105,7 +105,7 @@ class Library {
     this.files = this.files.filter((x) => x !== f);
     this.save();
     if (deleteIndex && !this.files.some((x) => x.key === f.key)) {
-      this.reconnect(); // soltar el archivo antes de borrarlo
+      this.reconnect(); // release the file before deleting it
       removeDb(this.dbPath(f));
     }
     return true;
@@ -121,7 +121,7 @@ class Library {
     db.close();
   }
 
-  // Metadatos del índice de un archivo (estado del indexado)
+  // Metadata of a file's index (indexing status)
   meta(f) {
     try {
       const alias = this.active.find((a) => a.id === f.id);
@@ -135,7 +135,7 @@ class Library {
     }
   }
 
-  // (Re)abre la conexión de consultas y adjunta los índices activos.
+  // (Re)opens the query connection and attaches the active indexes.
   reconnect() {
     if (this.conn) { try { this.conn.close(); } catch { /* */ } }
     this.conn = D.openDb(this.libDbPath);
@@ -171,8 +171,8 @@ function checkHeader(p) {
   }
 }
 
-// Huella del archivo basada en su contenido (tamaño + inicio + mitad + final):
-// si el PST se copia, mueve o renombra, se reutiliza el mismo índice.
+// File fingerprint based on its content (size + start + middle + end):
+// if the PST is copied, moved or renamed, the same index is reused.
 function fingerprint(p, size) {
   const h = crypto.createHash('sha1').update(String(size));
   const fd = fs.openSync(p, 'r');
@@ -189,7 +189,7 @@ function fingerprint(p, size) {
   return h.digest('hex').slice(0, 24);
 }
 
-// Busca PST/OST dentro de una carpeta (recursivo, con límites)
+// Looks for PST/OST files inside a folder (recursive, with limits)
 function scanFolder(dir, { maxDepth = 6, max = 500 } = {}) {
   const out = [];
   const walk = (d, depth) => {

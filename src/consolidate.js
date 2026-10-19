@@ -1,9 +1,9 @@
 'use strict';
-// Proceso de consolidación de la biblioteca: detecta los correos repetidos
-// entre respaldos (mismo Message-ID, o mismo asunto+fecha+remitente si no
-// tiene), precalcula las conversaciones globales y la comparación entre
-// archivos (qué correos tiene cada uno que no estén en otro). Corre aparte porque con
-// cientos de miles de correos tarda algunos segundos.
+// Library consolidation process: finds the emails repeated across backups
+// (same Message-ID, or same subject+date+sender if it has none), precalculates
+// the global conversations and the comparison between files (which emails each
+// one has that are not in another). It runs separately because with
+// hundreds of thousands of emails it takes a few seconds.
 const { openDb, createLibrarySchema, setMeta } = require('./db');
 
 function run({ libDbPath, files, sig }) {
@@ -44,9 +44,9 @@ function run({ libDbPath, files, sig }) {
     DELETE FROM main.gconvs;
     INSERT INTO main.gconvs(conv_key, n, last_date, f, id, att, unread, senders)
       SELECT conv_key, COUNT(*), MAX(date), f, id, SUM(att) > 0, SUM(unread) > 0, substr(group_concat(DISTINCT sender), 1, 300)
-      -- f, id: columnas del correo más reciente (única función MAX de la consulta)
+      -- f, id: columns of the most recent email (the only MAX function in the query)
       FROM allm a WHERE NOT EXISTS (SELECT 1 FROM main.dup d WHERE d.f = a.f AND d.id = a.id) GROUP BY conv_key;
-    -- comparación: correos únicos de cada archivo, solape entre pares y de qué archivo depende cada uno
+    -- comparison: unique emails of each file, overlap between pairs and which file each one depends on
     DELETE FROM main.cmp_uniq;
     INSERT INTO main.cmp_uniq(f, id) SELECT a.f, a.id FROM allm a JOIN prim p ON p.dkey = a.dkey WHERE p.nf = 1;
     DELETE FROM main.cmp_file;

@@ -38,7 +38,7 @@ button, input, select { font: inherit; color: inherit; }
 .muted { color: var(--muted); }
 code { background: var(--bg3); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
 
-/* ---------- botones ---------- */
+/* ---------- buttons ---------- */
 .btn {
   border: 1px solid var(--line); background: var(--bg2); border-radius: 6px; padding: 5px 12px;
   cursor: pointer; white-space: nowrap; line-height: 1.3;
@@ -53,7 +53,7 @@ code { background: var(--bg3); padding: 1px 5px; border-radius: 4px; font-size: 
 .btn.small { padding: 2px 8px; font-size: 12px; }
 .btn.on { background: var(--accent-bg); border-color: var(--accent); }
 
-/* ---------- barra superior ---------- */
+/* ---------- top bar ---------- */
 .top {
   display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line);
   background: var(--bg2); flex-wrap: wrap; min-height: 52px;
@@ -93,7 +93,7 @@ code { background: var(--bg3); padding: 1px 5px; border-radius: 4px; font-size: 
 .menu hr { border: 0; border-top: 1px solid var(--line); margin: 5px 0; width: 100%; }
 .menu-title { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding: 4px 10px; }
 
-/* ---------- búsqueda avanzada ---------- */
+/* ---------- advanced search ---------- */
 .adv { border-bottom: 1px solid var(--line); background: var(--bg2); padding: 10px 14px; }
 .adv form { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px 12px; align-items: end; }
 .adv label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
@@ -103,7 +103,7 @@ code { background: var(--bg3); padding: 1px 5px; border-radius: 4px; font-size: 
 .ck.small { font-size: 11px; color: var(--muted) !important; }
 .adv-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; }
 
-/* ---------- distribución ---------- */
+/* ---------- layout ---------- */
 .layout {
   flex: 1; display: grid; min-height: 0;
   grid-template-columns: var(--side-w) 5px var(--list-w) 5px minmax(240px, 1fr);
@@ -111,7 +111,7 @@ code { background: var(--bg3); padding: 1px 5px; border-radius: 4px; font-size: 
 .splitter { cursor: col-resize; background: var(--bg); border-left: 1px solid var(--line); }
 .splitter:hover, .splitter.drag { background: var(--accent-bg); }
 
-/* ---------- barra lateral ---------- */
+/* ---------- sidebar ---------- */
 .sidebar { display: flex; flex-direction: column; min-height: 0; background: var(--bg2); }
 .views { display: flex; flex-direction: column; padding: 8px 6px 4px; gap: 1px; }
 .view {
@@ -134,7 +134,7 @@ code { background: var(--bg3); padding: 1px 5px; border-radius: 4px; font-size: 
 .tnode .tc b { color: var(--accent); }
 .tnode.empty .tn { color: var(--muted); }
 
-/* ---------- lista ---------- */
+/* ---------- list ---------- */
 .list-pane { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .list-head {
   display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px;
@@ -189,7 +189,7 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1
 .i { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vertical-align: -3px; flex: none; }
 .view .i { width: 16px; height: 16px; }
 
-/* ---------- lector ---------- */
+/* ---------- reader ---------- */
 .reader { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: auto; }
 .welcome { max-width: 520px; margin: 12vh auto; text-align: center; padding: 20px; color: var(--muted); }
 .welcome h2 { color: var(--fg); }
@@ -232,7 +232,7 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1
 .banner a { color: var(--accent); cursor: pointer; }
 .body-frame { flex: 1; border: 0; width: 100%; min-height: 300px; background: #fff; border-top: 1px solid var(--line); }
 
-/* hilo */
+/* thread */
 .thread-head { padding: 12px 16px 6px; }
 .thread-head h2 { margin: 0 0 4px; font-size: 18px; }
 .tcard { margin: 8px 12px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--bg); }
@@ -248,7 +248,7 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1
 .tcard .tb .body-frame { min-height: 80px; border-top: 0; }
 .tcard.cur { border-color: var(--accent); }
 
-/* ---------- diálogos ---------- */
+/* ---------- dialogs ---------- */
 .dlg { border: 1px solid var(--line); border-radius: 10px; padding: 0; background: var(--bg); color: var(--fg); box-shadow: var(--shadow); width: min(760px, 94vw); }
 .dlg.wide { width: min(1000px, 96vw); }
 .dlg::backdrop { background: rgba(0, 0, 0, .35); }
@@ -289,7 +289,7 @@ details summary { cursor: pointer; margin-top: 14px; color: var(--accent); }
   .file-name { display: none; }
 }
 
-/* ---------- biblioteca de varios archivos ---------- */
+/* ---------- multi-file library ---------- */
 .ftag {
   flex: none; font-size: 10px; line-height: 15px; padding: 0 6px; border-radius: 8px; margin-left: 6px;
   background: color-mix(in srgb, var(--c) 16%, transparent); color: var(--c); border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
@@ -319,7 +319,7 @@ details summary { cursor: pointer; margin-top: 14px; color: var(--accent); }
 .small-note { font-size: 11px; margin-top: 12px; }
 .lib-foot-btns { display: flex; gap: 6px; flex: none; }
 
-/* ---------- comparar archivos ---------- */
+/* ---------- compare files ---------- */
 #cmpDlg { width: min(1240px, 97vw); }
 .cmp-intro { margin: 6px 0 0; }
 .cmp-wrap { overflow: auto; max-height: 46vh; margin-top: 10px; border: 1px solid var(--line); border-radius: 8px; }

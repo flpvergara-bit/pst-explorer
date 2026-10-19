@@ -1,5 +1,5 @@
-; Agrega PST Explorer a «Abrir con» para .pst y .ost sin quitarle la asociación
-; predeterminada a Outlook (instalación por usuario: HKCU).
+; Adds PST Explorer to "Open with" for .pst and .ost without taking the default
+; association away from Outlook (per-user install: HKCU).
 !macro customInstall
   WriteRegStr HKCU "Software\Classes\PSTExplorer.DataFile" "" "Outlook data file"
   WriteRegStr HKCU "Software\Classes\PSTExplorer.DataFile\DefaultIcon" "" "$INSTDIR\${APP_EXECUTABLE_FILENAME},0"

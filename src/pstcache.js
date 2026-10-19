@@ -1,22 +1,22 @@
 'use strict';
-// Caché de páginas para pst-extractor: la librería hace miles de lecturas
-// pequeñas (B-tree, cabeceras de bloque). Agruparlas en páginas alineadas
-// reduce drásticamente las llamadas al sistema en PST grandes.
+// Page cache for pst-extractor: the library does thousands of small reads
+// (B-tree, block headers). Grouping them into aligned pages drastically
+// reduces system calls on large PSTs.
 const fs = require('fs');
 const { PSTFile } = require('pst-extractor');
 const { PSTTable7C } = require('pst-extractor/dist/PSTTable7C.class');
 
 const PAGE = 64 * 1024;
-const MAX_PAGES = 2048; // ~128 MB por archivo abierto
-const DIRECT_READ = 4 * PAGE; // lecturas grandes (adjuntos) van directo
+const MAX_PAGES = 2048; // ~128 MB per open file
+const DIRECT_READ = 4 * PAGE; // large reads (attachments) go straight to disk
 
 function install() {
   if (PSTFile.prototype.__cached) return;
   PSTFile.prototype.__cached = true;
 
-  // getRecipient(i) y getAttachment(i) de pst-extractor releen la tabla completa
-  // en cada llamada: con miles de destinatarios eso es cuadrático y parece un
-  // cuelgue. Se memoriza la lectura completa de cada tabla.
+  // pst-extractor's getRecipient(i) and getAttachment(i) re-read the whole table
+  // on every call: with thousands of recipients that is quadratic and looks like a
+  // hang. The full read of each table is memoized.
   const getItems = PSTTable7C.prototype.getItems;
   PSTTable7C.prototype.getItems = function (start, count) {
     if (start === undefined && count === undefined) {
@@ -40,7 +40,7 @@ function install() {
       const pageNo = Math.floor(pos / PAGE);
       let page = pages.get(pageNo);
       if (page) {
-        pages.delete(pageNo); // mover al final (LRU)
+        pages.delete(pageNo); // move to the end (LRU)
         pages.set(pageNo, page);
       } else {
         const buf = Buffer.allocUnsafe(PAGE);

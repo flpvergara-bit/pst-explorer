@@ -1,5 +1,5 @@
 'use strict';
-/* PST Explorer — interfaz (biblioteca de varios PST) */
+/* PST Explorer — user interface (library of several PSTs) */
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -29,10 +29,10 @@ const LS = {
   set(k, v) { try { localStorage.setItem('pstx.' + k, JSON.stringify(v)); } catch { /* */ } },
 };
 
-// ------------------------------------------------------------------ idioma (textos en i18n.js)
+// ------------------------------------------------------------------ language (texts in i18n.js)
 
 const LOCALES = { en: 'en-US', es: 'es-CL' };
-// el idioma real lo guarda el servidor; aquí se recuerda el último para pintar sin parpadeo
+// the real language is stored by the server; the last one is remembered here to paint without flicker
 let LANG = LOCALES[LS.get('lang', 'en')] ? LS.get('lang', 'en') : 'en';
 const LOC = () => LOCALES[LANG];
 const plurals = {};
@@ -46,7 +46,7 @@ function t(key, vars = {}) {
   }
   return s.replace(/\{(\w+)\}/g, (m, k) => (vars[k] === undefined ? m : k === 'n' ? fmtNum(vars[k]) : String(vars[k])));
 }
-// textos fijos de index.html
+// fixed texts of index.html
 function applyI18n(root = document) {
   document.documentElement.lang = LANG;
   for (const el of root.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n);
@@ -57,7 +57,7 @@ function applyI18n(root = document) {
   if (sel) sel.value = LANG;
 }
 
-// ------------------------------------------------------------------ íconos (SVG, no dependen de fuentes emoji)
+// ------------------------------------------------------------------ icons (SVG, do not depend on emoji fonts)
 
 const svg = (d) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`;
 const I = {
@@ -79,7 +79,7 @@ const I = {
   warn: svg('M12 3l10 18H2zM12 10v5M12 18v.5'),
 };
 
-// ------------------------------------------------------------------ formato
+// ------------------------------------------------------------------ formatting
 
 function fmtShort(ms) {
   if (ms == null) return '';
@@ -123,7 +123,7 @@ function fileIco(ext) {
   return `<div class="fileico ${esc(e)}">${esc(e.slice(0, 4) || '?')}</div>`;
 }
 
-// ------------------------------------------------------------------ resaltado
+// ------------------------------------------------------------------ highlighting
 
 const ACC = { a: 'aáàäâã', e: 'eéèëê', i: 'iíìïî', o: 'oóòöôõ', u: 'uúùüû', n: 'nñ', c: 'cç' };
 function termRegex(terms) {
@@ -148,7 +148,7 @@ function hl(text, re) {
   }
   return out + esc(s.slice(last));
 }
-// Resalta dentro de un documento (cuerpo del correo en el iframe)
+// Highlights inside a document (email body in the iframe)
 function highlightDoc(doc, re) {
   if (!re || !doc || !doc.body) return [];
   const marks = [];
@@ -179,13 +179,13 @@ function highlightDoc(doc, re) {
   return marks;
 }
 
-// ------------------------------------------------------------------ estado
+// ------------------------------------------------------------------ state
 
 const DEFAULT_FILTERS = { dateFrom: '', dateTo: '', att: false, unread: false, mail: false, attext: '', inatt: true, dups: false, only: '' };
 const state = {
-  lib: null, // último /api/state
+  lib: null, // last /api/state
   view: 'mail', // mail | threads | attachments
-  node: { type: 'all' }, // nodo elegido en el árbol: all | file (id) | folder (ref "f:nid")
+  node: { type: 'all' }, // node chosen in the tree: all | file (id) | folder (ref "f:nid")
   nodeName: '',
   q: '',
   scope: 'all',
@@ -215,7 +215,7 @@ function filterParams({ forExport = false } = {}) {
     p.set('q', state.q);
     if (!state.filters.inatt) p.set('inatt', '0');
   }
-  // sin búsqueda se muestra el nodo elegido; con búsqueda manda el alcance
+  // without a search the chosen node is shown; with a search the scope decides
   const n = state.node;
   const scope = state.q ? state.scope : 'node';
   if (scope === 'node') {
@@ -244,7 +244,7 @@ function filterParams({ forExport = false } = {}) {
   return p;
 }
 
-// ------------------------------------------------------------------ lista virtual
+// ------------------------------------------------------------------ virtual list
 
 const ROW_H = 74;
 const PAGE = 100;
@@ -290,7 +290,7 @@ const vlist = {
     updateListHeader();
     showEmpty(this.total ? '' : emptyText());
     this.render();
-    // con muchos resultados el conteo rápido tiene tope; el exacto llega después
+    // with many results the quick count is capped; the exact one arrives later
     if (this.capped) {
       const cp = new URLSearchParams(params);
       cp.set('view', state.view);
@@ -343,7 +343,7 @@ const vlist = {
     const last = Math.min(this.total - 1, Math.ceil((top + h) / ROW_H) + 4);
     let html = '';
     for (let i = first; i <= last; i++) html += renderRow(this.row(i), i, i === this.sel, this.re);
-    // no reemplazar el DOM si nada cambió (evita perder clics a mitad de render)
+    // do not replace the DOM if nothing changed (avoids losing clicks mid-render)
     if (html !== this.lastHtml) { this.rows.innerHTML = html; this.lastHtml = html; }
   },
   select(i, { open = true, scroll = true } = {}) {
@@ -481,7 +481,7 @@ function openRow(r) {
   else openMessage(r.ref);
 }
 
-// ------------------------------------------------------------------ árbol (archivos y carpetas)
+// ------------------------------------------------------------------ tree (files and folders)
 
 const expanded = new Set(LS.get('expanded2', []));
 const collapsed = new Set(LS.get('collapsed2', []));
@@ -493,7 +493,7 @@ async function loadTree() {
   renderTree();
 }
 
-// carpetas estándar de Outlook con el nombre en el idioma de la interfaz (el PST puede venir en otro)
+// standard Outlook folders named in the UI language (the PST may come in another one)
 const FOLDERS = {
   es: {
     'Inbox': 'Bandeja de entrada', 'Sent Items': 'Elementos enviados', 'Deleted Items': 'Elementos eliminados', 'Drafts': 'Borradores',
@@ -594,7 +594,7 @@ $('#tree').addEventListener('click', (e) => {
     state.node = { type: 'folder', id: n.dataset.id };
     state.nodeName = f ? `${folderLabel(f)} (${fileLabel(f.file).replace(/\.(pst|ost)$/i, '')})` : '';
   }
-  // al elegir un archivo o carpeta mientras se busca, acotar la búsqueda ahí
+  // when choosing a file or folder while searching, narrow the search to it
   if (state.q && state.scope === 'all' && type !== 'all') $('#scope').value = state.scope = type === 'file' ? 'file' : 'folder';
   renderTree();
   state.selected = null;
@@ -602,7 +602,7 @@ $('#tree').addEventListener('click', (e) => {
 });
 $('#hideEmpty').addEventListener('change', renderTree);
 
-// ------------------------------------------------------------------ vistas / orden
+// ------------------------------------------------------------------ views / sorting
 
 $$('.view').forEach((b) => b.addEventListener('click', () => setView(b.dataset.view)));
 function setView(v) {
@@ -629,7 +629,7 @@ $('#dir').addEventListener('click', () => {
   vlist.load();
 });
 
-// ------------------------------------------------------------------ búsqueda
+// ------------------------------------------------------------------ search
 
 const qInput = $('#q');
 let qTimer = 0;
@@ -650,7 +650,7 @@ function setQuery(q) {
   const had = !!state.q;
   state.q = q;
   if (!q) state.terms = [];
-  // con búsqueda nueva conviene ver primero lo más relevante
+  // with a new search it is better to see the most relevant first
   if (q && !had && state.sort === 'date' && !state.sortTouched && state.view !== 'attachments') state.sort = 'relevance';
   if (!q && state.sort === 'relevance') { state.sort = 'date'; state.sortTouched = false; }
   $('#sort').value = state.sort;
@@ -687,7 +687,7 @@ $('#chips').addEventListener('click', (e) => {
 $('#btnAdv').addEventListener('click', () => {
   const p = $('#advPanel');
   p.hidden = !p.hidden;
-  if (!p.hidden) { syncAdvForm(); $('#advForm [name=de]').focus(); }
+  if (!p.hidden) { syncAdvForm(); $('#advForm [name=from]').focus(); }
 });
 function syncAdvForm() {
   const fm = $('#advForm');
@@ -700,7 +700,7 @@ $('#advForm').addEventListener('submit', (e) => {
   e.preventDefault();
   const fm = e.target;
   const parts = [];
-  // conservar lo escrito en la caja de búsqueda y añadir los campos
+  // keep what is typed in the search box and append the fields
   if (qInput.value.trim()) parts.push(qInput.value.trim());
   const field = (name, prefix) => {
     const v = fm[name].value.trim();
@@ -708,8 +708,8 @@ $('#advForm').addEventListener('submit', (e) => {
     for (const w of v.match(/"[^"]+"|\S+/g) || []) parts.push(`${prefix}${w.startsWith('"') ? w : quoteIf(w)}`);
     fm[name].value = '';
   };
-  field('de', t('field.from')); field('para', t('field.to')); field('asunto', t('field.subject')); field('cuerpo', t('field.body'));
-  field('adjunto', t('field.attachment')); field('contenido', t('field.content')); field('sin', '-');
+  field('from', t('field.from')); field('to', t('field.to')); field('subject', t('field.subject')); field('body', t('field.body'));
+  field('attname', t('field.attachment')); field('content', t('field.content')); field('without', '-');
   Object.assign(state.filters, {
     dateFrom: fm.dateFrom.value, dateTo: fm.dateTo.value, attext: fm.attext.value,
     att: fm.att.checked, unread: fm.unread.checked, mail: fm.mail.checked, inatt: fm.inatt.checked, dups: fm.dups.checked,
@@ -731,7 +731,7 @@ $('#advClear').addEventListener('click', () => {
 });
 $('#btnHelp').addEventListener('click', () => $('#helpDlg').showModal());
 
-// ------------------------------------------------------------------ vista de adjuntos
+// ------------------------------------------------------------------ attachments view
 
 function renderExtChips(exts) {
   $('#extChips').innerHTML = exts.filter((x) => x.ext).map((x) =>
@@ -758,7 +758,7 @@ $('#attSelZip').addEventListener('click', () => {
   download(`/api/export/attachments.zip?pairs=${enc([...state.attSel].join(','))}&flat=1&name=${enc(t('att.selected'))}`);
 });
 
-// ------------------------------------------------------------------ lector
+// ------------------------------------------------------------------ reader
 
 const reader = $('#reader');
 let readerGen = 0;
@@ -767,7 +767,7 @@ function bodyUrl(ref) {
   return `/api/message/${enc(ref)}/body${state.images ? '?images=1' : ''}`;
 }
 
-// Iframe aislado con el cuerpo del correo; se ajusta a su contenido y resalta coincidencias
+// Isolated iframe with the email body; it fits its content and highlights matches
 function makeFrame(ref, onMarks) {
   const fr = document.createElement('iframe');
   fr.className = 'body-frame';
@@ -936,7 +936,7 @@ async function showHeaders(ref) {
   try { $('#headersPre').textContent = await api(`/api/message/${enc(ref)}/headers`); } catch (e) { $('#headersPre').textContent = e.message; }
 }
 
-// ------------------------------------------------------------------ conversación
+// ------------------------------------------------------------------ conversation
 
 async function openThread(key, focusRef) {
   if (!key) return;
@@ -1035,7 +1035,7 @@ async function openThread(key, focusRef) {
   if (fc) { fc.hidden = false; expand(fc, rows.length > 3); }
 }
 
-// ------------------------------------------------------------------ descargas e impresión
+// ------------------------------------------------------------------ downloads and printing
 
 function download(url) {
   const a = document.createElement('a');
@@ -1049,7 +1049,7 @@ function printRefs(refs) {
   window.open(`/print?ref=${refs.map(enc).join(',')}&auto=1${state.images ? '&images=1' : ''}`, '_blank');
 }
 
-// ------------------------------------------------------------------ menú exportar
+// ------------------------------------------------------------------ export menu
 
 $('#btnMenu').addEventListener('click', (e) => { e.stopPropagation(); $('#menu').hidden = !$('#menu').hidden; });
 document.addEventListener('click', (e) => { if (!e.target.closest('.menu-wrap')) $('#menu').hidden = true; });
@@ -1062,7 +1062,7 @@ $('#menu').addEventListener('click', async (e) => {
   if (act === 'compare') return showCompare();
   if (act === 'pause') return togglePause();
   const p = filterParams({ forExport: true });
-  // las exportaciones se basan en correos, no en conversaciones ni archivos
+  // exports are based on emails, not on conversations or files
   let count = null;
   try {
     const c = await api(`/api/messages?${p}&limit=1`);
@@ -1083,7 +1083,7 @@ $('#menu').addEventListener('click', async (e) => {
   toast(t('export.preparing'));
 });
 
-// ------------------------------------------------------------------ biblioteca
+// ------------------------------------------------------------------ library
 
 $('#btnLib').addEventListener('click', showLibrary);
 $('#progress').addEventListener('click', showLibrary);
@@ -1203,8 +1203,8 @@ async function addPaths(body, url = '/api/library/add') {
   }
 }
 
-// En la app de escritorio se usan los diálogos nativos (window.pstx, ver electron/preload.js);
-// en el navegador, el diálogo de Windows que abre el servidor.
+// In the desktop app the native dialogs are used (window.pstx, see electron/preload.js);
+// in the browser, the Windows dialog opened by the server.
 const desktop = window.pstx && window.pstx.isDesktop ? window.pstx : null;
 $('#btnPickFiles').addEventListener('click', async () => {
   try {
@@ -1245,7 +1245,7 @@ async function togglePause() {
   } catch (err) { toast(err.message, true); }
 }
 
-// explorador de carpetas
+// folder browser
 $('#browseBox').addEventListener('toggle', (e) => { if (e.target.open) browse(''); });
 async function browse(dir) {
   try {
@@ -1274,7 +1274,7 @@ function afterLibraryChange() {
   refreshState(true);
 }
 
-// ------------------------------------------------------------------ comparar archivos
+// ------------------------------------------------------------------ compare files
 
 $('#btnCompare').addEventListener('click', () => { $('#libDlg').close(); showCompare(); });
 $('#btnCmpRefresh').addEventListener('click', async () => {
@@ -1383,7 +1383,7 @@ $('#cmpBody').addEventListener('click', (e) => {
   if (!b) return;
   const fid = Number(b.dataset.uniq);
   $('#cmpDlg').close();
-  // ver en la lista solo los elementos únicos de ese archivo (desde ahí se pueden exportar)
+  // show in the list only the unique items of that file (they can be exported from there)
   state.node = { type: 'file', id: fid };
   state.nodeName = fileLabel(fid);
   state.filters.only = 'unique';
@@ -1397,7 +1397,7 @@ $('#cmpBody').addEventListener('click', (e) => {
   vlist.load();
 });
 
-// ------------------------------------------------------------------ estado e indexado
+// ------------------------------------------------------------------ state and indexing
 
 let pollTimer = 0;
 let lastRefresh = 0;
@@ -1434,14 +1434,14 @@ async function refreshState(force = false) {
   let s;
   try { s = await api('/api/state'); } catch { pollTimer = setTimeout(refreshState, 3000); return; }
   state.lib = s;
-  // el idioma guardado en el servidor manda (p. ej. si se cambió desde el menú de la app de escritorio)
+  // the language stored on the server wins (e.g. if it was changed from the desktop app menu)
   if (s.lang && s.lang !== LANG && LOCALES[s.lang]) setLangLocal(s.lang);
   headerProgress(s);
   if (s.files.length && reader.querySelector('.welcome [data-act=open]')) {
     reader.innerHTML = `<div class="welcome"><p>${t('reader.select')}</p></div>`;
   }
   if ($('#libDlg').open) renderLibrary();
-  // firma: qué archivos están activos y cuánto llevan indexado
+  // signature: which files are active and how much they have indexed
   const sig = s.files.map((f) => `${f.id}:${f.active}:${f.status.indexed}:${f.status.complete}:${f.job ? f.job.done : ''}`).join('|') + (s.consolidating ? 'c' : '');
   const busy = s.indexing || s.consolidating;
   const now = Date.now();
@@ -1471,7 +1471,7 @@ async function refreshState(force = false) {
       const which = sp.dataset.split;
       const startX = e.clientX;
       const startW = which === 'side' ? $('#sidebar').offsetWidth : $('.list-pane').offsetWidth;
-      // los iframes capturan el ratón; desactivarlos durante el arrastre
+      // iframes capture the mouse; disable them while dragging
       $$('iframe').forEach((f) => (f.style.pointerEvents = 'none'));
       let moved = false;
       const move = (ev) => {
@@ -1516,8 +1516,8 @@ function setLangLocal(lang) {
   updateAttSel();
   updateListHeader();
 }
-// cambio de idioma: se guarda en el servidor (también lo usan la app de escritorio, la impresión
-// y las exportaciones) y se recarga la página para rehacer todos los textos
+// language change: saved on the server (also used by the desktop app, printing
+// and exports) and the page reloads to redo all texts
 $('#langSel').addEventListener('change', async (e) => {
   try {
     await api('/api/settings', { lang: e.target.value });

@@ -1,16 +1,16 @@
-# Índices y biblioteca: contienen el texto de los correos. Nunca se suben.
+# Indexes and library: they contain the text of the emails. Never committed.
 data/
 
-# Dependencias (se instalan con npm install)
+# Dependencies (installed with npm install)
 node_modules/
 
-# Archivos de Outlook y exportaciones
+# Outlook files and exports
 *.pst
 *.ost
 *.eml
 *.msg
 
-# Entorno local
+# Local environment
 .claude/
 scratch/
 *.log
@@ -18,5 +18,5 @@ scratch/
 Thumbs.db
 desktop.ini
 
-# Instaladores generados
+# Generated installers
 dist/

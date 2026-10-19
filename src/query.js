@@ -1,13 +1,13 @@
 'use strict';
-// Consultas combinadas sobre varios índices (uno por PST) adjuntos a una misma
-// conexión SQLite como f<id>. Cada archivo aporta uno o más "brazos" a un
-// UNION ALL que luego se ordena y pagina.
+// Combined queries over several indexes (one per PST) attached to the same
+// SQLite connection as f<id>. Each file contributes one or more "arms" to a
+// UNION ALL that is then sorted and paginated.
 const { buildFtsQuery, parseDay, ATT_ROWID } = require('./db');
 
-const COUNT_CAP = 5000; // el conteo rápido se detiene aquí; el exacto se pide aparte
+const COUNT_CAP = 5000; // the quick count stops here; the exact one is requested separately
 
-// Referencias: mensaje "fid-nid" (o "fid-nid.0.1" para adjuntos incrustados),
-// carpeta "fid:nid".
+// References: message "fid-nid" (or "fid-nid.0.1" for embedded attachments),
+// folder "fid:nid".
 function parseFolderRef(s) {
   const m = /^(\d+):(\d+)$/.exec(String(s || ''));
   return m ? { f: Number(m[1]), id: Number(m[2]) } : null;
@@ -19,7 +19,7 @@ function parseMsgRef(s) {
 
 const listParam = (v, max = 5000) => String(v || '').split(',').map((x) => x.trim()).filter(Boolean).slice(0, max);
 
-// Prepara, para cada archivo activo, los filtros comunes (sin la búsqueda de texto).
+// Prepares, for each active file, the common filters (without the text search).
 // files: [{ id, alias }]
 function build(conn, files, q) {
   const fts = buildFtsQuery(q.q);
@@ -79,9 +79,9 @@ function build(conn, files, q) {
       where.push(`m.id IN (${ids.map(() => '?').join(',')})`);
       params.push(...ids);
     }
-    // copias del mismo correo en otros respaldos: se muestran una sola vez
+    // copies of the same email in other backups: shown only once
     if (q.dups !== '1') where.push(`NOT EXISTS (SELECT 1 FROM main.dup d WHERE d.f = ${f.id} AND d.id = m.id)`);
-    // solo los correos que no están en ningún otro archivo de la biblioteca
+    // only the emails that are not in any other file of the library
     if (q.only === 'unique') where.push(`EXISTS (SELECT 1 FROM main.cmp_uniq u WHERE u.f = ${f.id} AND u.id = m.id)`);
     arms.push({ f, A, where, params });
   }
@@ -92,9 +92,9 @@ const inMain = (A) => `m.id IN (SELECT rowid FROM ${A}.fts WHERE fts MATCH ?)`;
 const inAtt = (A) => `m.id IN (SELECT rowid / ${ATT_ROWID} FROM ${A}.attfts WHERE attfts MATCH ?)`;
 const W = (list) => (list.length ? 'WHERE ' + list.join(' AND ') : '');
 
-// Genera los SELECT de cada archivo. cols(arm) devuelve las columnas; from(arm) el FROM
-// (por defecto los mensajes). Con relevancia, las coincidencias en asunto/cuerpo llevan
-// su puntuación bm25 y las que solo están en adjuntos van a continuación (rank 0).
+// Builds the SELECTs of each file. cols(arm) returns the columns; from(arm) the FROM
+// (messages by default). With relevance, matches in subject/body carry their
+// bm25 score and those only inside attachments come after them (rank 0).
 function arms(b, cols, { from, extraWhere = [], extraParams = [], forceSimple = false } = {}) {
   const out = [];
   for (const arm of b.arms) {
@@ -118,7 +118,7 @@ function arms(b, cols, { from, extraWhere = [], extraParams = [], forceSimple = 
         out.push({ sql: `SELECT ${cols(arm, '0.0', '1')} FROM ${FROM} ${W(w)}`, params: p });
       }
     } else {
-      // orden por fecha u otra columna: basta con saber si el correo coincide
+      // sort by date or another column: it is enough to know whether the email matches
       const conds = [];
       const cp = [];
       if (b.main) { conds.push(inMain(A)); cp.push(b.main); }
@@ -149,7 +149,7 @@ function orderBy(q, b) {
   return `ORDER BY ${col} ${dir}, src ${dir}, id ${dir}`;
 }
 
-// Conteo con tope: rápido aunque coincidan cientos de miles de correos
+// Capped count: fast even when hundreds of thousands of emails match
 function countCapped(conn, u, cap = COUNT_CAP) {
   const n = conn.prepare(`SELECT COUNT(*) AS n FROM (SELECT 1 FROM (${u.sql}) LIMIT ${cap + 1})`).get(...u.params).n;
   return { total: Math.min(n, cap), capped: n > cap };
@@ -158,7 +158,7 @@ function countExact(conn, u) {
   return conn.prepare(`SELECT COUNT(*) AS n FROM (${u.sql})`).get(...u.params).n;
 }
 
-// ------------------------------------------------------------------ consultas
+// ------------------------------------------------------------------ queries
 
 function messages(conn, files, q, { limit, offset = 0, count = false, exact = false } = {}) {
   const b = build(conn, files, q);
@@ -184,7 +184,7 @@ function addConvCounts(conn, rows) {
   }
 }
 
-// ¿la consulta no tiene filtros? (permite usar la tabla precalculada de conversaciones)
+// does the query have no filters? (allows using the precalculated conversations table)
 const isUnfiltered = (q) => !q.q && !q.folder && !q.file && !q.dateFrom && !q.dateTo && q.att !== '1' && q.unread !== '1'
   && q.kind !== 'mail' && !q.attext && !q.ids && q.dups !== '1' && !q.only;
 
@@ -207,7 +207,7 @@ function threads(conn, files, q, { limit, offset = 0, count = false, exact = fal
   const terms = b.fts ? b.fts.terms : [];
   if (!u) return { total: 0, rows: [], terms };
   if (exact) return { total: conn.prepare(`SELECT COUNT(DISTINCT conv_key) AS n FROM (${u.sql})`).get(...u.params).n };
-  // MAX(date) es la única función MIN/MAX: src, id, asunto… salen del correo más reciente
+  // MAX(date) is the only MIN/MAX function: src, id, subject… come from the most recent email
   const order = b.relevance ? 'SUM(rank) / COUNT(*) ASC, date DESC' : `date ${dir}`;
   const rows = conn.prepare(`SELECT conv_key, COUNT(*) AS hits, MAX(date) AS date, src, id, subject, sender_name, snippet,
       SUM(att_count) AS att_count, CASE WHEN SUM(is_read = 0) > 0 THEN 0 ELSE 1 END AS is_read,
@@ -222,7 +222,7 @@ function threads(conn, files, q, { limit, offset = 0, count = false, exact = fal
   return res;
 }
 
-// completa asunto/remitente/resumen del último correo de cada conversación
+// fills in subject/sender/snippet of the last email of each conversation
 function fillThreadRows(conn, files, rows) {
   const byId = new Map(files.map((f) => [f.id, f]));
   for (const r of rows) {

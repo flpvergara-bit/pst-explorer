@@ -1,18 +1,18 @@
 'use strict';
-// Proceso indexador: recorre el PST y llena el índice SQLite. Corre en un
-// proceso aparte para que la interfaz siga respondiendo y para que un elemento
-// dañado que haga caer al lector no afecte al servidor. Es reanudable: si se
-// interrumpe, continúa desde donde quedó (las tandas se confirman enteras).
-// En "modo cuidadoso" (tras una caída) confirma elemento por elemento y anota
-// cuál está procesando, para saltarlo si vuelve a fallar.
+// Indexer process: walks the PST and fills the SQLite index. It runs in a
+// separate process so the UI keeps responding and so a damaged item that
+// crashes the reader does not affect the server. It is resumable: if it is
+// interrupted, it continues where it stopped (batches are committed whole).
+// In "careful mode" (after a crash) it commits item by item and records
+// which one it is processing, to skip it if it fails again.
 //
-// Fase 1: carpetas y correos (metadatos + cuerpo para búsqueda).
-// Fase 2: texto del contenido de los adjuntos (PDF, Office, texto, correos adjuntos).
+// Phase 1: folders and emails (metadata + body for search).
+// Phase 2: text of the attachment content (PDF, Office, text, attached emails).
 const R = require('./pstreader');
 const { extractText, EXTRACTABLE, MAX_BYTES } = require('./extract');
 const { openDb, setMeta, getMeta, ATT_ROWID } = require('./db');
 
-const BODY_LIMIT = 100000; // caracteres de cuerpo que se indexan por mensaje
+const BODY_LIMIT = 100000; // body characters indexed per message
 const BATCH = 250;
 
 const post = (m) => { if (process.send) process.send(m); };
@@ -24,7 +24,7 @@ async function run({ pstPath, dbPath, careful: c, phase = 'all' }) {
   careful = !!c;
   const db = openDb(dbPath);
   const pst = R.openPst(pstPath);
-  // elemento que se estaba procesando cuando ocurrió la caída anterior
+  // item that was being processed when the previous crash happened
   const crashed = getMeta(db, 'crash_candidate');
   if (crashed) {
     const [kind, a, b] = crashed.split(':').map((x, i) => (i ? Number(x) : x));
@@ -49,7 +49,7 @@ async function run({ pstPath, dbPath, careful: c, phase = 'all' }) {
   post({ type: 'done' });
 }
 
-// ------------------------------------------------------------------ fase 1
+// ------------------------------------------------------------------ phase 1
 
 function indexMessages(db, pst) {
   post({ type: 'phase', phase: 'scanning' });
@@ -68,7 +68,7 @@ function indexMessages(db, pst) {
   };
   walk(pst.getRootFolder(), null, '', 0);
 
-  // correos ya indexados en una ejecución anterior (reanudación)
+  // emails already indexed in a previous run (resume)
   const already = new Map(db.prepare('SELECT folder_id, COUNT(*) n FROM messages GROUP BY folder_id').all().map((r) => [r.folder_id, r.n]));
   const seen = new Set(db.prepare('SELECT id FROM messages').all().map((r) => r.id));
   for (const id of String(getMeta(db, 'skip_ids') || '').split(',').filter(Boolean)) seen.add(Number(id));
@@ -145,7 +145,7 @@ function indexMessages(db, pst) {
       const body = R.getBody(msg);
       text = body.type === 'html' ? R.htmlToText(body.content) : body.content;
       if (body.type === 'html') R.markInline(atts, body.content);
-    } catch { /* cuerpo ilegible */ }
+    } catch { /* unreadable body */ }
     const subject = R.safe(() => msg.subject);
     const snippet = text.slice(0, 600).replace(/\s+/g, ' ').trim().slice(0, 240);
     const visible = atts.filter((a) => !a.hidden || a.embedded);
@@ -162,10 +162,10 @@ function indexMessages(db, pst) {
   }
 }
 
-// ------------------------------------------------------------------ fase 2
+// ------------------------------------------------------------------ phase 2
 
 async function indexAttachments(db, pst) {
-  // txt_state: 0 pendiente, 1 indexado, 2 no aplica / error
+  // txt_state: 0 pending, 1 indexed, 2 not applicable / error
   db.exec(`UPDATE attachments SET txt_state = 2 WHERE txt_state = 0 AND embedded = 0
     AND (hidden = 1 OR size > ${MAX_BYTES} OR ext NOT IN (${[...EXTRACTABLE].map((e) => `'${e}'`).join(',')}))`);
   const pending = db.prepare('SELECT msg_id, idx, ext, embedded FROM attachments WHERE txt_state = 0 ORDER BY msg_id, idx').all();
@@ -206,7 +206,7 @@ async function indexAttachments(db, pst) {
         ins.run(a.msg_id * ATT_ROWID + a.idx, text);
         state = 1;
       }
-    } catch { /* adjunto dañado o protegido con contraseña */ }
+    } catch { /* damaged or password-protected attachment */ }
     upd.run(state, a.msg_id, a.idx);
     done++;
     if (careful || done % 25 === 0) {
@@ -234,5 +234,5 @@ process.once('message', (opts) => {
       setTimeout(() => process.exit(2), 100);
     });
 });
-// si el servidor desaparece, terminar también
+// if the server goes away, exit too
 process.on('disconnect', () => process.exit(0));

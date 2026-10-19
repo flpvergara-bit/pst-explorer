@@ -1,5 +1,5 @@
 'use strict';
-// Puente mínimo entre la interfaz y la app de escritorio (diálogos nativos).
+// Minimal bridge between the UI and the desktop app (native dialogs).
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('pstx', {

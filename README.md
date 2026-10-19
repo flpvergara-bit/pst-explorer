@@ -1,32 +1,32 @@
 # PST Explorer
 
-Visor local para revisar varios archivos de Outlook **.pst / .ost** a la vez, pensado para archivos grandes (decenas de GB). Funciona en tu equipo (el servidor solo escucha en `127.0.0.1`) y **nunca modifica los PST**: los abre en modo de solo lectura. Nada se envía a internet.
+Local viewer to browse several Outlook **.pst / .ost** files at once, built for large files (tens of GB). It runs on your computer (the server only listens on `127.0.0.1`) and **never modifies the PSTs**: it opens them read-only. Nothing is sent to the internet.
 
-![PST Explorer: búsqueda en varios archivos a la vez](docs/captura.png)
+![PST Explorer: searching several files at once](docs/screenshot.png)
 
-<sub>Captura hecha con el conjunto público de correos de Enron (EDRM, ZL Technologies, CC BY 3.0) que trae la librería pst-extractor como datos de prueba.</sub>
+<sub>Screenshot made with the public Enron email set (EDRM, ZL Technologies, CC BY 3.0) that ships with the pst-extractor library as test data.</sub>
 
-## Instalación (Windows, recomendado)
+## Installation (Windows, recommended)
 
-1. Descarga **`PST Explorer Setup x.y.z.exe`** desde [Releases](https://github.com/flpvergara-bit/pst-explorer/releases/latest).
-2. Ejecútalo. Se instala solo para tu usuario (no pide permisos de administrador) y crea accesos en el menú Inicio y en el Escritorio.
-3. Abre **PST Explorer** y agrega tus archivos desde **Biblioteca**.
+1. Download **`PST-Explorer-Setup-x.y.z.exe`** from [Releases](https://github.com/flpvergara-bit/pst-explorer/releases/latest).
+2. Run it. It installs for your user only (no administrator rights needed) and creates Start menu and Desktop shortcuts. The installer is available in English and Spanish.
+3. Open **PST Explorer** and add your files from **Library**.
 
-El instalador todavía no está firmado digitalmente, así que la primera vez Windows SmartScreen puede mostrar «Windows protegió su PC». Pulsa **Más información → Ejecutar de todas formas**.
+The installer is not digitally signed yet, so the first time Windows SmartScreen may show "Windows protected your PC". Click **More info → Run anyway**.
 
-**Qué ofrece la app de escritorio:**
-- Ventana propia, con diálogos nativos para elegir archivos y carpetas.
-- **Ícono en la bandeja.** Si cierras la ventana mientras se indexa, la app sigue trabajando en segundo plano, avisa cuando termina y evita que el equipo entre en suspensión. *Salir* desde el ícono la cierra del todo.
-- **Actualizaciones automáticas.** Las versiones nuevas se descargan solas y se instalan al reiniciar la app; nunca a mitad de un indexado.
-- Clic derecho en un `.pst` → **Abrir con → PST Explorer** lo agrega a la biblioteca. La asociación predeterminada con Outlook no se toca.
-- Los índices se guardan en `%APPDATA%\PST Explorer\data`, se conservan al actualizar o reinstalar, y se pueden abrir desde *Archivo → Abrir carpeta de datos*.
-- **Idioma: inglés (predeterminado) o español.** Se cambia con el selector de la barra superior o en *View → Language* / *Ver → Idioma*. La elección se guarda junto a la biblioteca y también se aplica a menús, impresión, exportaciones y nombres de archivo. En la búsqueda funcionan los prefijos en ambos idiomas (`from:`/`de:`, `to:`/`para:`, `subject:`/`asunto:`, `body:`/`cuerpo:`, `attachment:`/`adjunto:`, `content:`/`contenido:`).
+**What the desktop app offers:**
+- Its own window, with native dialogs to choose files and folders.
+- **Tray icon.** If you close the window while indexing, the app keeps working in the background, notifies you when it finishes and keeps the computer from going to sleep. *Quit* from the icon closes it completely.
+- **Automatic updates.** New versions download by themselves and install when the app restarts; never in the middle of indexing.
+- Right-click a `.pst` → **Open with → PST Explorer** adds it to the library. The default association with Outlook is not changed.
+- Indexes are stored in `%APPDATA%\PST Explorer\data`, are kept when updating or reinstalling, and can be opened from *File → Open data folder*.
+- **Language: English (default) or Spanish.** Change it with the selector in the top bar or in *View → Language*. The choice is saved next to the library and also applies to menus, printing, exports and file names. Search field prefixes work in both languages (`from:`/`de:`, `to:`/`para:`, `subject:`/`asunto:`, `body:`/`cuerpo:`, `attachment:`/`adjunto:`, `content:`/`contenido:`).
 
-**Si ya usabas la versión web**, la app detecta tu biblioteca anterior la primera vez que se abre. La **copia y la verifica** (comprueba que cada archivo copiado sea idéntico y la integridad de cada índice), así que no hay que volver a indexar. La carpeta original queda intacta hasta que la borres desde **Biblioteca**. Cierra la versión web antes de importar.
+**If you already used the web version**, the app detects your previous library the first time it opens. It **copies and verifies it** (checks that every copied file is identical and the integrity of every index), so there is no need to re-index. The original folder stays intact until you delete it from **Library**. Close the web version before importing.
 
-## Versión web (desde el código)
+## Web version (from source)
 
-Necesitas [Node.js](https://nodejs.org) 22.13 o superior (usa el SQLite que trae Node, sin compilar nada).
+You need [Node.js](https://nodejs.org) 22.13 or later (it uses the SQLite built into Node, nothing to compile).
 
 ```bash
 git clone https://github.com/flpvergara-bit/pst-explorer.git
@@ -40,66 +40,67 @@ cd pst-explorer
 npm install
 ```
 
-En Windows, haz doble clic en **`Iniciar PST Explorer.bat`** o ejecuta `npm start`: se abre el navegador en `http://localhost:8765`. Para detenerla, cierra la ventana negra. El puerto se cambia con la variable `PORT` y la carpeta de datos con `PSTX_DATA`.
+On Windows, double-click **`Start PST Explorer.bat`** or run `npm start`: the browser opens at `http://localhost:8765`. To stop it, close the console window. The port is set with the `PORT` variable and the data folder with `PSTX_DATA`.
 
-Para desarrollar la app de escritorio: `npm run app` la abre con Electron y `npm run dist` genera el instalador en `dist/`. Para publicar una versión, sube una etiqueta `vX.Y.Z` y el workflow de GitHub Actions compila el instalador y lo publica en Releases, desde donde la app instalada se actualiza.
+To work on the desktop app: `npm run app` opens it with Electron and `npm run dist` builds the installer in `dist/`. To publish a version, push a `vX.Y.Z` tag and the GitHub Actions workflow builds the installer and publishes it to Releases, from where the installed app updates itself.
 
-Si Outlook tiene abierto un PST, ese archivo está bloqueado: cierra Outlook o trabaja sobre una copia.
+If Outlook has a PST open, that file is locked: close Outlook or work on a copy.
 
-## Biblioteca: varios PST juntos
+## Library: several PSTs together
 
-Con el botón **Biblioteca** agregas archivos sueltos o una carpeta completa (busca todos los `.pst`/`.ost` que contenga). Todos los archivos de la biblioteca se revisan juntos:
+With the **Library** button you add single files or a whole folder (it finds every `.pst`/`.ost` inside it). All files in the library are reviewed together:
 
-- **Indexado en cola, uno a la vez** (para no saturar el disco). Primero se indexan los correos de todos los archivos, del más pequeño al más grande, y después el texto de dentro de los adjuntos. Puedes navegar y buscar desde el primer momento: los resultados se completan a medida que avanza. El avance y el tiempo estimado de cada archivo se ven en la biblioteca y arriba a la derecha.
-- **Índices persistentes**: cada PST tiene su propio índice en `data\index\`. Se reconoce por el **contenido** del archivo y no por su ruta, así que sigue sirviendo aunque muevas el PST de carpeta o de disco. Si el indexado se interrumpe (cierras la app, se apaga el equipo), al volver a abrirla **continúa donde quedó**. *Pausar indexado* libera el equipo cuando lo necesites.
-- **Búsqueda en todos los archivos a la vez**. Cada resultado indica de qué respaldo viene, y con el selector junto al buscador puedes acotar a *Archivo actual*, *Carpeta actual* o *Carpeta y subcarpetas*.
-- **Correos repetidos entre respaldos**: si el mismo correo está en varios respaldos (mismo identificador de mensaje), se muestra una sola vez y su ficha indica «También en: …». Para ver todas las copias, marca *Mostrar copias repetidas entre respaldos* en **Filtros**.
-- **Comparar archivos** (Biblioteca → *Comparar archivos…*, o menú **Exportar**): para cada PST muestra cuántos elementos no están en ningún otro respaldo (información única), cuántos tienen copia en otro y cuántos se repiten dentro del mismo archivo, más una tabla de solape entre todos los pares. Si un archivo no tiene nada único, se indica que puede descartarse y qué otros archivos hay que conservar. *Ver únicos* muestra en la lista solo esos elementos, que luego se pueden exportar (CSV, .eml, adjuntos). Repetido = mismo identificador de mensaje. La app nunca modifica ni borra los PST.
-- **Conversaciones entre archivos**: un hilo reúne sus correos aunque estén repartidos en distintos respaldos.
-- **Activar o desactivar** un archivo (casilla en la biblioteca) lo incluye o lo excluye de las búsquedas sin borrar su índice. Caben hasta 10 archivos activos a la vez.
-- **Disco desconectado**: si un PST no está disponible (por ejemplo, en un disco externo), igual puedes buscar en su índice y ver los datos del correo; para abrir el cuerpo completo y los adjuntos hay que conectar el disco.
-- **Elementos dañados**: si un correo dañado hace caer al lector, el indexado se reanuda solo, salta ese elemento y lo cuenta como «ilegible».
+- **Queued indexing, one file at a time** (so the disk is not overloaded). First the emails of all files are indexed, from the smallest to the largest, then the text inside the attachments. You can browse and search from the start: results fill in as it progresses. Progress and estimated time for each file are shown in the library and at the top right.
+- **Persistent indexes**: each PST has its own index in `data\index\`. It is recognized by the file **content**, not its path, so it keeps working even if you move the PST to another folder or drive. If indexing is interrupted (you close the app, the computer shuts down), it **resumes where it stopped** when you open it again. *Pause indexing* frees the computer when you need it.
+- **Search across all files at once**. Each result shows which backup it comes from, and the selector next to the search box narrows it to *Current file*, *Current folder* or *Folder and subfolders*.
+- **Emails repeated across backups**: if the same email is in several backups (same message identifier), it is shown once and its details say "Also in: …". To see every copy, tick *Show duplicate copies across backups* in **Filters**.
+- **Compare files** (Library → *Compare files…*, or the **Export** menu): for each PST it shows how many items are not in any other backup (unique information), how many have a copy elsewhere and how many are repeated inside the same file, plus an overlap table between every pair. If a file has nothing unique, it says it can be discarded and which other files must be kept. *View unique* shows only those items in the list, which can then be exported (CSV, .eml, attachments). Duplicate = same message identifier. The app never modifies or deletes the PSTs.
+- **Conversations across files**: a thread gathers its emails even when they are spread over different backups.
+- **Enabling or disabling** a file (checkbox in the library) includes it in or excludes it from searches without deleting its index. Up to 10 files can be active at once.
+- **Disconnected drive**: if a PST is not available (for example, on an external drive), you can still search its index and see the email details; to open the full body and the attachments, connect the drive.
+- **Damaged items**: if a damaged email crashes the reader, indexing resumes by itself, skips that item and counts it as "unreadable".
 
-## Qué hace
+## Features
 
-- **Carpetas, correos, conversaciones y adjuntos**: árbol con cada archivo y sus carpetas, lista virtual (aguanta cientos de miles de elementos), vista agrupada por conversación y una vista con todos los adjuntos, que se pueden filtrar por tipo o nombre.
-- **Visor**: cuerpo HTML, RTF o texto. Muestra las imágenes incrustadas y bloquea las imágenes externas (puedes mostrarlas con un clic). Permite abrir correos que vienen adjuntos dentro de otros correos y ver los encabezados de Internet.
-- **Adjuntos**: descargarlos uno a uno, ver PDF e imágenes en el navegador, bajar un ZIP con los de un correo o de una conversación, o marcar varios y bajarlos juntos.
-- **Imprimir / PDF**: un correo, una conversación completa o los resultados de una búsqueda, con encabezados (De, Para, CC, fecha, adjuntos, archivo y carpeta de origen).
-- **Exportar** lo que esté filtrado en ese momento: listado CSV para Excel (separado por `;`, con columna de archivo de origen), todos los adjuntos en un ZIP (por correo o en una sola carpeta) y los correos como `.eml` en un ZIP, respetando archivo y carpetas.
+- **Folders, emails, conversations and attachments**: a tree with each file and its folders, a virtual list (handles hundreds of thousands of items), a view grouped by conversation and a view with every attachment, filterable by type or name.
+- **Viewer**: HTML, RTF or plain-text body. Shows embedded images and blocks external images (you can show them with one click). Opens emails attached inside other emails and shows the Internet headers.
+- **Attachments**: download them one by one, view PDFs and images in the browser, get a ZIP with those of an email or a conversation, or tick several and download them together.
+- **Print / PDF**: an email, a whole conversation or the results of a search, with headers (From, To, CC, date, attachments, source file and folder).
+- **Export** whatever is currently filtered: a CSV list for Excel (`;`-separated, with a source-file column), all attachments in a ZIP (by email or in a single folder) and the emails as `.eml` files in a ZIP, keeping files and folders.
 
-## Búsqueda
+## Search
 
-No distingue mayúsculas ni tildes, y cada palabra encuentra también sus terminaciones (*factura* encuentra *facturas* y *facturación*). Busca en el asunto, el remitente, los destinatarios, el cuerpo, los nombres de los adjuntos **y el texto dentro de los adjuntos**: PDF, Word, Excel, PowerPoint, TXT/CSV/XML/HTML y correos adjuntos.
+It ignores case and accents, and each word also matches longer forms (*invoice* finds *invoices* and *invoiced*). It searches the subject, sender, recipients, body, attachment names **and the text inside attachments**: PDF, Word, Excel, PowerPoint, TXT/CSV/XML/HTML and attached emails.
 
-| Escribe | Encuentra |
+| Type | Finds |
 |---|---|
-| `factura marzo` | correos con ambas palabras |
-| `"orden de compra"` | la frase exacta |
-| `pago OR transferencia` | correos con cualquiera de las dos |
-| `cotización -borrador` | excluye *borrador* |
-| `de:juan`, `para:maria`, `asunto:contrato`, `cuerpo:urgente` | busca en ese campo |
-| `adjunto:pdf` | el nombre del archivo adjunto |
-| `contenido:"123456"` | solo dentro del contenido de los adjuntos |
+| `invoice march` | emails with both words |
+| `"purchase order"` | the exact phrase |
+| `payment OR transfer` | emails with either of the two |
+| `quote -draft` | excludes *draft* |
+| `from:john`, `to:mary`, `subject:contract`, `body:urgent` | searches in that field |
+| `attachment:pdf` | the attachment file name |
+| `content:"123456"` | only inside the content of attachments |
 
-El panel **Filtros** agrega rangos de fecha, el tipo de adjunto, solo no leídos, solo correos y la opción de mostrar copias repetidas. Las coincidencias aparecen resaltadas en la lista y en el correo (▲▼ salta entre ellas). Los resultados que solo coinciden dentro de un adjunto llevan la etiqueta «en adjunto». Con muchísimos resultados, el total se muestra primero como «más de 5.000» y el número exacto llega un instante después.
+The **Filters** panel adds date ranges, attachment type, unread only, emails only and the option to show duplicate copies. Matches are highlighted in the list and in the email (▲▼ jumps between them). Results that only match inside an attachment carry the "in attachment" tag. With a huge number of results, the total is shown first as "more than 5,000" and the exact number arrives a moment later.
 
-Límites: los PDF escaneados (imágenes sin texto) no se pueden buscar porque no hay OCR. Tampoco encuentra un número escrito dentro de otra palabra (por ejemplo `12345` dentro de `INV12345`), pero sí lo encuentra escribiendo `inv12345`.
+Limits: scanned PDFs (images without text) cannot be searched because there is no OCR. It also does not find a number written inside another word (for example `12345` inside `INV12345`), but it does find it by typing `inv12345`.
 
-Atajos: `/` o `Ctrl+F` para ir al buscador, ↑/↓ para recorrer la lista, `Enter` para abrir la conversación y `Ctrl+P` para imprimir.
+Shortcuts: `/` or `Ctrl+F` to go to the search box, ↑/↓ to move through the list, `Enter` to open the conversation and `Ctrl+P` to print.
 
-## Cómo funciona
+## How it works
 
-- Servidor Node.js local ([Express](https://expressjs.com)) e interfaz web sin frameworks (`public/`). En la app de escritorio ([Electron](https://www.electronjs.org), `electron/`), el mismo servidor corre como proceso aparte en un puerto libre, protegido con un token de sesión, y la ventana carga esa interfaz.
-- Lectura de PST/OST con [pst-extractor](https://github.com/epfromer/pst-extractor), más una caché de páginas y una corrección para tablas con miles de destinatarios (`src/pstcache.js`).
-- Un índice SQLite con búsqueda de texto completo FTS5 por archivo (`src/indexer.js`, que corre en un proceso aparte). Las consultas combinan los índices con `ATTACH` (`src/query.js`) y `src/consolidate.js` detecta las copias entre respaldos.
-- Texto de adjuntos: [pdf.js](https://mozilla.github.io/pdf.js/) para PDF y [fflate](https://github.com/101arrowz/fflate) para Word, Excel y PowerPoint.
-- Seguridad: el cuerpo de cada correo se muestra en un iframe aislado con una política de contenido (CSP) que bloquea scripts e imágenes externas, y el servidor rechaza peticiones de otros orígenes.
+- Local Node.js server ([Express](https://expressjs.com)) and a framework-free web UI (`public/`). In the desktop app ([Electron](https://www.electronjs.org), `electron/`), the same server runs as a separate process on a free port, protected with a session token, and the window loads that UI.
+- PST/OST reading with [pst-extractor](https://github.com/epfromer/pst-extractor), plus a page cache and a fix for tables with thousands of recipients (`src/pstcache.js`).
+- One SQLite index with FTS5 full-text search per file (`src/indexer.js`, which runs in a separate process). Queries combine the indexes with `ATTACH` (`src/query.js`) and `src/consolidate.js` finds the copies across backups and builds the file comparison.
+- Attachment text: [pdf.js](https://mozilla.github.io/pdf.js/) for PDF and [fflate](https://github.com/101arrowz/fflate) for Word, Excel and PowerPoint.
+- Translations: `public/i18n.js` (web UI) and `src/i18n.js` (server and desktop app), in English and Spanish.
+- Security: each email body is shown in an isolated iframe with a content security policy (CSP) that blocks scripts and external images, and the server rejects requests from other origins.
 
-## Privacidad
+## Privacy
 
-La carpeta `data/` guarda los índices, que contienen el texto de los correos, y la lista de archivos de la biblioteca. Está excluida del repositorio (`.gitignore`); no la compartas.
+The `data/` folder stores the indexes, which contain the text of the emails, and the list of files in the library. It is excluded from the repository (`.gitignore`); do not share it.
 
-## Licencia
+## License
 
 [MIT](LICENSE)

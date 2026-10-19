@@ -1,10 +1,10 @@
 'use strict';
-// Extracción de texto del contenido de adjuntos para la búsqueda.
+// Text extraction from attachment content for search.
 const { unzipSync, strFromU8 } = require('fflate');
 const iconv = require('iconv-lite');
 const { htmlToText, decodeEntities } = require('./pstreader');
 
-const MAX_BYTES = 40 * 1024 * 1024; // adjuntos más grandes no se leen
+const MAX_BYTES = 40 * 1024 * 1024; // larger attachments are not read
 const MAX_CHARS = 200000;
 const MAX_PDF_PAGES = 150;
 
@@ -17,7 +17,7 @@ function decodeText(buf) {
   if (buf[0] === 0xff && buf[1] === 0xfe) return iconv.decode(buf, 'utf16le');
   if (buf[0] === 0xfe && buf[1] === 0xff) return iconv.decode(buf, 'utf16be');
   const s = buf.toString('utf8');
-  // si hay muchos caracteres de reemplazo, probablemente es Windows-1252
+  // many replacement characters probably mean Windows-1252
   const bad = (s.match(/�/g) || []).length;
   return bad > 3 && bad > s.length / 1000 ? iconv.decode(buf, 'win1252') : s;
 }
@@ -37,7 +37,7 @@ function officeText(buf, ext) {
   for (const [name, data] of Object.entries(files)) {
     let xml = strFromU8(data);
     if (/^xl\/worksheets/.test(name)) {
-      // en hojas solo interesan valores numéricos y cadenas en línea (el resto está en sharedStrings)
+      // in sheets only numeric values and inline strings matter (the rest is in sharedStrings)
       xml = (xml.match(/<(v|t)[^>]*>[^<]*<\/\1>/g) || []).join(' ');
     }
     out.push(xmlText(xml));

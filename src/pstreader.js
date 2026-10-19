@@ -1,5 +1,5 @@
 'use strict';
-// Utilidades de lectura de PST compartidas entre el servidor y el indexador.
+// PST reading utilities shared by the server and the indexer.
 const Long = require('long');
 const iconv = require('iconv-lite');
 const { deEncapsulateSync } = require('rtf-stream-parser');
@@ -9,7 +9,7 @@ require('./pstcache').install();
 const { t } = require('./i18n');
 
 const ATTACH_EMBEDDED = 5;
-const MAX_RECIPIENTS = 5000; // envíos masivos: más allá de esto no aporta
+const MAX_RECIPIENTS = 5000; // mass mailings: beyond this it adds nothing
 
 function safe(fn, def = '') {
   try {
@@ -29,8 +29,8 @@ function loadObject(pst, nid) {
   return PSTUtil.detectAndLoadPSTObject(pst, node);
 }
 
-// Ids de los elementos de una carpeta. A diferencia de getNextChild(), no se
-// detiene ante filas dañadas o no descargadas (OST): simplemente las omite.
+// Ids of the items in a folder. Unlike getNextChild(), it does not stop at
+// damaged or not-downloaded rows (OST): it simply skips them.
 function folderChildIds(folder) {
   const ids = [];
   try { folder.initEmailsTable(); } catch { return ids; }
@@ -55,7 +55,7 @@ class NotFound extends Error {
   constructor(msg) { super(msg); this.status = 404; }
 }
 
-// ref: "123" (id de nodo) o "123.0.2" (mensajes adjuntos dentro de mensajes)
+// ref: "123" (node id) or "123.0.2" (messages attached inside messages)
 function parseRef(ref) {
   const parts = String(ref).split('.').map(Number);
   if (!parts.length || parts.some((n) => !Number.isSafeInteger(n) || n < 0)) throw new NotFound(t('err.badRef'));
@@ -80,7 +80,7 @@ function loadMessage(pst, ref) {
   return msg;
 }
 
-// ---------- direcciones ----------
+// ---------- addresses ----------
 
 const isSmtp = (s) => typeof s === 'string' && /^[^\s@<>]+@[^\s@<>]+$/.test(s);
 
@@ -88,7 +88,7 @@ function senderOf(msg) {
   const name = safe(() => msg.senderName) || safe(() => msg.sentRepresentingName);
   let email = safe(() => msg.senderEmailAddress);
   if (!isSmtp(email)) {
-    // remitentes Exchange (X500): buscar la dirección SMTP en propiedades alternativas
+    // Exchange senders (X500): look for the SMTP address in alternative properties
     email = [0x5d01, 0x5d02, 0x0065]
       .map((id) => safe(() => msg.getStringItem(id)))
       .find(isSmtp) || safe(() => msg.sentRepresentingEmailAddress);
@@ -109,7 +109,7 @@ function recipientsOf(msg) {
     const type = safe(() => r.recipientType, 1);
     (type === 2 ? out.cc : type === 3 ? out.bcc : out.to).push({ name, email });
   }
-  // Algunos PST no tienen tabla de destinatarios: usar los textos de visualización
+  // Some PSTs have no recipients table: use the display texts
   if (!n) {
     const split = (s) => (s || '').split(';').map((x) => x.trim()).filter(Boolean).map((name) => ({ name, email: '' }));
     out.to = split(safe(() => msg.displayTo));
@@ -127,7 +127,7 @@ function messageDate(msg) {
   return d instanceof Date && !isNaN(d) ? d.getTime() : null;
 }
 
-// ---------- asunto / hilos ----------
+// ---------- subject / threads ----------
 
 const PREFIX_RE = /^\s*(?:\[[^\]]{0,40}\]\s*)?(?:re|rv|fw|fwd|res|enc|tr|aw|wg|sv|vs|rif|r|reenviar|reenv|resp|respuesta)\s*(?:\[\d+\]|\(\d+\))?\s*[:：]\s*/i;
 
@@ -146,10 +146,10 @@ function convKeyOf(msg, id) {
   return k || `#${id}`;
 }
 
-// ---------- cuerpo ----------
+// ---------- body ----------
 
 function rtfToText(rtf) {
-  // Conversión básica de RTF a texto plano (para RTF "real", no encapsulado)
+  // Basic RTF to plain text conversion (for "real" RTF, not encapsulated)
   let out = '';
   let depth = 0;
   const skipStack = [];
@@ -183,7 +183,7 @@ function rtfToText(rtf) {
           let code = Number(m[2]);
           if (code < 0) code += 65536;
           out += String.fromCharCode(code);
-          i += uc; // saltar el carácter de reemplazo
+          i += uc; // skip the replacement character
         }
       } else if (m[3] && !skip) {
         out += iconv.decode(Buffer.from([parseInt(m[3], 16)]), 'win1252');
@@ -203,7 +203,7 @@ function rtfDecode(buf, enc) {
   try { return iconv.decode(buf, enc); } catch { return iconv.decode(buf, 'win1252'); }
 }
 
-// Devuelve { type: 'html' | 'text', content }
+// Returns { type: 'html' | 'text', content }
 function getBody(msg) {
   const html = safe(() => msg.bodyHTML);
   if (html && html.trim()) return { type: 'html', content: html };
@@ -212,7 +212,7 @@ function getBody(msg) {
     try {
       const r = deEncapsulateSync(rtf, { decode: rtfDecode, mode: 'either' });
       if (r && r.text) return { type: r.mode === 'html' ? 'html' : 'text', content: String(r.text) };
-    } catch { /* continuar */ }
+    } catch { /* keep going */ }
   }
   const text = safe(() => msg.body);
   if (text && text.trim()) return { type: 'text', content: text };
@@ -220,7 +220,7 @@ function getBody(msg) {
     try {
       const r = deEncapsulateSync(rtf, { decode: rtfDecode, mode: 'either' });
       if (r && r.text) return { type: r.mode === 'html' ? 'html' : 'text', content: String(r.text) };
-    } catch { /* RTF real */ }
+    } catch { /* real RTF */ }
     return { type: 'text', content: rtfToText(rtf) };
   }
   return { type: 'text', content: '' };
@@ -257,7 +257,7 @@ function bodyText(msg) {
   return b.type === 'html' ? htmlToText(b.content) : b.content;
 }
 
-// ---------- adjuntos ----------
+// ---------- attachments ----------
 
 const MIME = {
   pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp', webp: 'image/webp',
@@ -309,7 +309,7 @@ function listAttachments(msg) {
   return out;
 }
 
-// Marca como "en línea" las imágenes referenciadas desde el HTML (cid:)
+// Marks images referenced from the HTML (cid:) as "inline"
 function markInline(atts, html) {
   for (const a of atts) {
     if (a.cid && !a.embedded && html.includes(`cid:${a.cid}`)) a.hidden = true;

@@ -1,7 +1,7 @@
 'use strict';
-// Importación de una biblioteca de una versión anterior (la versión web guarda
-// sus datos en <carpeta de la app>\data). Se COPIA a la carpeta de datos de la
-// app de escritorio y se verifica; la carpeta original no se modifica.
+// Import of a library from a previous version (the web version keeps its data
+// in <app folder>\data). It is COPIED to the desktop app's data folder and
+// verified; the original folder is not modified.
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -12,9 +12,9 @@ const isLibraryDir = (dir) => {
   try { return fs.statSync(path.join(dir, 'library.json')).isFile() && fs.statSync(path.join(dir, 'index')).isDirectory(); } catch { return false; }
 };
 
-// Busca bibliotecas anteriores en lugares típicos: junto a la app, en la carpeta
-// actual y en carpetas tipo "pst-explorer" (raíz de cada disco, perfil, Escritorio,
-// Documentos, Descargas) hasta dos niveles.
+// Looks for previous libraries in typical places: next to the app, in the current
+// folder and in "pst-explorer"-like folders (root of each drive, profile, Desktop,
+// Documents, Downloads) up to two levels deep.
 function findLegacy(extra = []) {
   const found = new Set();
   const add = (dir) => { if (dir && isLibraryDir(dir)) found.add(path.resolve(dir)); };
@@ -38,7 +38,7 @@ function findLegacy(extra = []) {
   return [...found];
 }
 
-// Resumen de una biblioteca: archivos, correos indexados y tamaño
+// Summary of a library: files, indexed emails and size
 function summarize(dir) {
   const { DatabaseSync } = require('node:sqlite');
   const lib = JSON.parse(fs.readFileSync(path.join(dir, 'library.json'), 'utf8'));
@@ -48,19 +48,19 @@ function summarize(dir) {
   for (const f of lib.files || []) {
     const db = path.join(dir, 'index', f.key + '.db');
     if (!fs.existsSync(db)) continue;
-    // solo lectura sobre una base que no se está escribiendo: se lee el contador guardado
+    // read-only on a database that is not being written: read the stored counter
     try {
       const d = new DatabaseSync(db, { readOnly: true });
       const r = d.prepare("SELECT v FROM meta WHERE k = 'indexed'").get();
       d.close();
       messages += Number(r && r.v) || 0;
-    } catch { /* índice ilegible: se informará en la verificación */ }
+    } catch { /* unreadable index: reported by the verification */ }
   }
   return { dir, files: (lib.files || []).length, messages, bytes };
 }
 
-// Archivos que forman la biblioteca (relativos a dir). Los -wal se copian porque
-// pueden tener datos aún no volcados al .db; los -shm no: SQLite los reconstruye.
+// Files that make up the library (relative to dir). -wal files are copied because
+// they may hold data not yet flushed to the .db; -shm files are not: SQLite rebuilds them.
 function listFiles(dir) {
   const out = [];
   for (const name of ['library.json', 'library.db', 'library.db-wal']) {
@@ -97,9 +97,9 @@ function hashFile(file, onBytes) {
   });
 }
 
-// Copia la biblioteca de src a dest y la verifica:
-//  1) cada archivo copiado tiene el mismo SHA-256 que el original;
-//  2) cada índice pasa PRAGMA quick_check y su cantidad de correos coincide con lo registrado.
+// Copies the library from src to dest and verifies it:
+//  1) every copied file has the same SHA-256 as the original;
+//  2) every index passes PRAGMA quick_check and its email count matches the recorded one.
 // onProgress({ phase, done, total, text })
 async function copyAndVerify(src, dest, onProgress = () => {}) {
   const tmp = dest + '.importando';
@@ -116,7 +116,7 @@ async function copyAndVerify(src, dest, onProgress = () => {}) {
       onProgress({ phase: 'copy', done, total, text: f.rel });
     }));
   }
-  // 1) comprobar que lo escrito es idéntico
+  // 1) check that what was written is identical
   done = 0;
   const problems = [];
   for (const f of files) {
@@ -126,14 +126,14 @@ async function copyAndVerify(src, dest, onProgress = () => {}) {
     });
     if (h !== hashes.get(f.rel)) problems.push(`${f.rel}: ${t('mig.notIdentical')}`);
   }
-  // 2) integridad de cada índice y cantidad de correos
+  // 2) integrity of each index and email count
   const { DatabaseSync } = require('node:sqlite');
   const lib = JSON.parse(fs.readFileSync(path.join(tmp, 'library.json'), 'utf8'));
   let messages = 0;
   for (const [i, f] of (lib.files || []).entries()) {
     onProgress({ phase: 'check', done: i, total: lib.files.length, text: f.name });
     const db = path.join(tmp, 'index', f.key + '.db');
-    if (!fs.existsSync(db)) continue; // archivo agregado pero aún sin índice
+    if (!fs.existsSync(db)) continue; // file added but not indexed yet
     try {
       const d = new DatabaseSync(db);
       const ok = d.prepare('PRAGMA quick_check').get();

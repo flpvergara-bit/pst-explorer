@@ -2,7 +2,7 @@
 const { DatabaseSync } = require('node:sqlite');
 
 const SCHEMA_VERSION = '2';
-const ATT_ROWID = 4096; // rowid en attfts = msg_id * ATT_ROWID + idx
+const ATT_ROWID = 4096; // rowid in attfts = msg_id * ATT_ROWID + idx
 
 function openDb(file) {
   const db = new DatabaseSync(file);
@@ -33,7 +33,7 @@ function createSchema(db) {
     CREATE INDEX IF NOT EXISTS ix_att_ext ON attachments(ext);
     CREATE INDEX IF NOT EXISTS ix_att_state ON attachments(txt_state);
   `);
-  // pesos de relevancia: asunto, remitente, destinatarios, cuerpo, nombres de adjuntos
+  // relevance weights: subject, sender, recipients, body, attachment names
   db.exec("INSERT INTO fts(fts, rank) VALUES('rank', 'bm25(10.0, 5.0, 3.0, 1.0, 4.0)')");
   db.prepare('INSERT OR REPLACE INTO meta(k, v) VALUES (?, ?)').run('schema', SCHEMA_VERSION);
 }
@@ -47,7 +47,7 @@ function setMeta(db, k, v) {
   db.prepare('INSERT OR REPLACE INTO meta(k, v) VALUES (?, ?)').run(k, String(v));
 }
 
-// ---------- búsqueda ----------
+// ---------- search ----------
 
 const FIELD_ALIASES = {
   de: 'sender', from: 'sender', remitente: 'sender',
@@ -58,12 +58,12 @@ const FIELD_ALIASES = {
   contenido: 'content', content: 'content', dentro: 'content',
 };
 
-// Convierte el texto del usuario en consultas FTS5 seguras.
-// Admite "frases", -exclusiones, prefijos de campo (de:, para:, asunto:, adjunto:, cuerpo:, contenido:)
-// y OR entre grupos de términos. Devuelve { main, att, terms }:
-//   main  -> consulta sobre los correos (asunto, remitente, destinatarios, cuerpo, nombres de adjuntos)
-//   att   -> consulta sobre el texto extraído de los adjuntos (términos sin campo o con contenido:)
-//   terms -> palabras para resaltar en la interfaz
+// Turns the user's text into safe FTS5 queries.
+// Supports "phrases", -exclusions, field prefixes (from:/de:, to:/para:, subject:/asunto:, attachment:/adjunto:, body:/cuerpo:, content:/contenido:)
+// and OR between groups of terms. Returns { main, att, terms }:
+//   main  -> query on the emails (subject, sender, recipients, body, attachment names)
+//   att   -> query on the text extracted from attachments (terms without a field or with content:)
+//   terms -> words to highlight in the UI
 function buildFtsQuery(input) {
   const groups = [[]];
   const terms = [];
@@ -76,7 +76,7 @@ function buildFtsQuery(input) {
     let col = null;
     if (field) {
       col = FIELD_ALIASES[field.toLowerCase()] || null;
-      if (!col) text = `${field}:${text}`; // no era un campo (p.ej. una hora 10:30)
+      if (!col) text = `${field}:${text}`; // it was not a field (e.g. a time like 10:30)
     }
     const clean = text.replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
     if (!clean) continue;
@@ -89,7 +89,7 @@ function buildFtsQuery(input) {
     for (const g of groups) {
       const pos = g.filter((t) => !t.neg);
       if (!pos.length) continue;
-      // un grupo solo aplica a un destino si todos sus términos positivos pueden buscarse ahí
+      // a group only applies to a target if all its positive terms can be searched there
       const fits = (t) => (target === 'main' ? t.col !== 'content' : !t.col || t.col === 'content');
       if (!pos.every(fits)) continue;
       const fmt = (t) => (target === 'main' && t.col ? `${t.col} : ${t.phrase}` : t.phrase);
@@ -113,8 +113,8 @@ function parseDay(s, endOfDay) {
   return d.getTime();
 }
 
-// Base de la biblioteca: datos que combinan varios archivos (copias repetidas
-// entre respaldos y conversaciones globales). Se recalcula con consolidate.js.
+// Library database: data that combines several files (duplicate copies across
+// backups and global conversations). Recalculated by consolidate.js.
 function createLibrarySchema(db) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
@@ -123,7 +123,7 @@ function createLibrarySchema(db) {
     CREATE TABLE IF NOT EXISTS gconvs(conv_key TEXT PRIMARY KEY, n INTEGER, last_date INTEGER, f INTEGER, id INTEGER,
       att INTEGER, unread INTEGER, senders TEXT);
     CREATE INDEX IF NOT EXISTS ix_gconvs_date ON gconvs(last_date);
-    -- comparación entre archivos: qué tiene cada uno que no esté en los demás
+    -- comparison between files: what each one has that the others do not
     CREATE TABLE IF NOT EXISTS cmp_file(f INTEGER PRIMARY KEY, total INTEGER, unique_n INTEGER, shared_n INTEGER,
       intra_dup INTEGER, no_id INTEGER, min_date INTEGER, max_date INTEGER);
     CREATE TABLE IF NOT EXISTS cmp_pair(a INTEGER, b INTEGER, shared INTEGER, PRIMARY KEY(a, b)) WITHOUT ROWID;

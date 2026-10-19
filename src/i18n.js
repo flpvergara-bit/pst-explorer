@@ -1,7 +1,7 @@
 'use strict';
-// Textos del motor (server.js, src/*) y de la app de escritorio (electron/*) en
-// inglés y español. La interfaz web tiene los suyos en public/i18n.js.
-// El idioma elegido se guarda en <datos>/settings.json (ver loadSettings).
+// Texts of the engine (server.js, src/*) and the desktop app (electron/*) in
+// English and Spanish. The web UI has its own in public/i18n.js.
+// The chosen language is stored in <data>/settings.json (see loadSettings).
 const fs = require('fs');
 const path = require('path');
 
@@ -11,7 +11,7 @@ const LOCALE = { en: 'en-US', es: 'es-CL' };
 
 const S = {
   en: {
-    // errores del motor
+    // engine errors
     'err.notActive': 'The file is not active in the library',
     'err.badRef': 'Invalid reference',
     'err.msgNotFound': 'Message not found',
@@ -30,22 +30,22 @@ const S = {
     'mig.notIdentical': 'the copy is not identical to the original',
     'mig.integrity': 'the index failed the integrity check',
     'mig.count': '{expected} emails were expected and there are {found}',
-    // motivos al agregar archivos
+    // reasons when adding files
     'add.notFound': 'file not found',
     'add.notFile': 'not a file',
     'add.already': 'already in the library',
     'add.notPst': 'not a valid PST/OST file',
     'add.locked': 'the file is locked (is Outlook using it?)',
-    // diálogos de Windows (versión web)
+    // Windows dialogs (web version)
     'pick.folderTitle': 'Folder that contains the PST/OST files',
     'pick.filesTitle': 'Add Outlook data files',
     'pick.filter': 'Outlook files',
     'pick.all': 'All files',
-    // explorador de carpetas
+    // folder browser
     'browse.documents': 'Documents',
     'browse.downloads': 'Downloads',
     'browse.desktop': 'Desktop',
-    // nombres de archivos exportados
+    // exported file names
     'file.unnamed': 'unnamed',
     'file.noSubject': '(no subject)',
     'file.mail': 'email',
@@ -54,7 +54,7 @@ const S = {
     'file.mailsDated': 'Emails {date}',
     // CSV
     'csv.headers': ['Date', 'From', 'Sender email', 'To', 'CC', 'Subject', 'PST file', 'Folder', 'Attachments (count)', 'Attachments', 'Size (KB)', 'Type', 'ID'],
-    // impresión
+    // printing
     'print.from': 'From:',
     'print.date': 'Date:',
     'print.to': 'To:',
@@ -68,7 +68,7 @@ const S = {
     'print.remoteBlocked': 'remote images blocked',
     'print.none': 'There are no emails to print.',
     'print.fromIndex': 'Showing the beginning of the text stored in the index.',
-    // escritorio: motor, ventana, bandeja
+    // desktop: engine, window, tray
     'app.importFailed': 'Could not import the previous library:\n\n{msg}\n\nThe app will start with an empty library; the original folder was not modified.',
     'app.engineStopped': 'The application engine stopped (code {code}).\nCheck the log in:\n{dir}',
     'app.engineFailed': 'Could not start the engine: {msg}',
@@ -86,7 +86,7 @@ const S = {
     'tray.pause': 'Pause indexing',
     'tray.resume': 'Resume indexing',
     'tray.quit': 'Quit',
-    // escritorio: diálogos
+    // desktop: dialogs
     'dlg.addFiles': 'Add Outlook data files',
     'dlg.outlookFiles': 'Outlook files',
     'dlg.allFiles': 'All files',
@@ -116,7 +116,7 @@ const S = {
     'dlg.ok': 'OK',
     'dlg.imported': 'Library imported and verified',
     'dlg.importedDetail': '{files} · {messages} emails. No re-indexing needed.\n\nThe original folder is still intact in:\n{dir}\nOnce you have checked that everything is fine, you can delete it from the Library.',
-    // escritorio: menú
+    // desktop: menu
     'menu.file': 'File',
     'menu.openData': 'Open data folder',
     'menu.openLog': 'Open error log',
@@ -134,7 +134,7 @@ const S = {
     'menu.site': 'Project website',
     'menu.about': 'About PST Explorer {v}',
     'menu.aboutDetail': 'Local viewer and search for PST/OST files.\nMIT License.',
-    // escritorio: actualizaciones
+    // desktop: updates
     'upd.latest': 'You have the latest version.',
     'upd.failed': 'Could not check for updates.',
     'upd.restart': 'Restart and update',
@@ -269,7 +269,7 @@ let current = DEFAULT_LANG;
 const norm = (l) => (LANGS.includes(l) ? l : DEFAULT_LANG);
 const plural = {};
 
-// t('clave', { n: 3, name: 'x' }) — {var} se reemplaza; si el texto es { one, other } se elige por n
+// t('key', { n: 3, name: 'x' }) — {var} is replaced; if the text is { one, other } it is chosen by n
 function t(key, vars = {}, lang = current) {
   lang = norm(lang);
   let s = S[lang][key];
@@ -285,18 +285,18 @@ function t(key, vars = {}, lang = current) {
 
 const fmtNum = (n, lang = current) => Number(n || 0).toLocaleString(LOCALE[norm(lang)]);
 
-// Error con texto traducido y código HTTP
+// Error with translated text and HTTP status
 const err = (status, key, vars) => Object.assign(new Error(t(key, vars)), { status });
 
 const setLang = (l) => { current = norm(l); return current; };
 const getLang = () => current;
 const locale = (lang = current) => LOCALE[norm(lang)];
 
-// Preferencias guardadas junto a la biblioteca (sobreviven a las actualizaciones)
+// Preferences stored next to the library (they survive updates)
 function settingsPath(dataDir) { return path.join(dataDir, 'settings.json'); }
 function loadSettings(dataDir) {
   let s = {};
-  try { s = JSON.parse(fs.readFileSync(settingsPath(dataDir), 'utf8')) || {}; } catch { /* sin preferencias: valores por defecto */ }
+  try { s = JSON.parse(fs.readFileSync(settingsPath(dataDir), 'utf8')) || {}; } catch { /* no preferences: defaults */ }
   s.lang = norm(s.lang);
   return s;
 }

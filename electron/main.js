@@ -1,8 +1,8 @@
 'use strict';
-// PST Explorer — proceso principal de la app de escritorio (Electron).
-// La interfaz y el motor son los mismos de la versión web: server.js corre en un
-// utilityProcess (para que el trabajo pesado no congele la ventana) y la ventana
-// carga http://localhost:<puerto>/ con un token de sesión.
+// PST Explorer — main process of the desktop app (Electron).
+// The UI and the engine are the same as the web version: server.js runs in a
+// utilityProcess (so heavy work does not freeze the window) and the window
+// loads http://localhost:<port>/ with a session token.
 const {
   app, BrowserWindow, utilityProcess, dialog, ipcMain, Tray, Menu, Notification,
   powerSaveBlocker, shell, session, nativeImage,
@@ -20,12 +20,12 @@ const TOKEN = crypto.randomBytes(24).toString('hex');
 
 app.setName('PST Explorer');
 app.setAppUserModelId('com.flpvergara.pstexplorer');
-// Para pruebas: otra carpeta de datos de la app y una biblioteca anterior concreta
+// For testing: another app data folder and a specific previous library
 if (process.env.PSTX_USERDATA) app.setPath('userData', path.resolve(process.env.PSTX_USERDATA));
 const LEGACY_HINT = process.env.PSTX_LEGACY ? [path.resolve(process.env.PSTX_LEGACY)] : null;
 const DATA = path.join(app.getPath('userData'), 'data');
 const LOG_DIR = path.join(app.getPath('userData'), 'logs');
-// idioma de menús y diálogos: el mismo que eligió el usuario en la interfaz (settings.json)
+// language of menus and dialogs: the same one the user chose in the UI (settings.json)
 I.setLang(I.loadSettings(DATA).lang);
 
 let win = null;
@@ -38,7 +38,7 @@ let blocker = null;
 let hiddenNotice = false;
 let updateReady = false;
 
-// ventana padre de los diálogos, si existe (si no, el diálogo se abre suelto)
+// parent window for dialogs, if any (otherwise the dialog opens on its own)
 const parentWin = () => (win && !win.isDestroyed() ? [win] : []);
 const pstArgs = (argv) => argv.filter((a) => /\.(pst|ost)$/i.test(a) && fs.existsSync(a));
 const busy = () => !status.paused && (status.indexing || status.consolidating || status.pending);
@@ -69,10 +69,10 @@ async function start() {
   setupUpdates();
 }
 
-// ---------------------------------------------------------------- servidor
+// ---------------------------------------------------------------- server
 
 function startServer() {
-  const log = fs.createWriteStream(path.join(LOG_DIR, 'servidor.log'), { flags: 'a' });
+  const log = fs.createWriteStream(path.join(LOG_DIR, 'server.log'), { flags: 'a' });
   log.write(`\n=== ${new Date().toISOString()} v${app.getVersion()} ===\n`);
   server = utilityProcess.fork(path.join(ROOT, 'server.js'), pstArgs(process.argv.slice(1)), {
     serviceName: 'PST Explorer (motor)',
@@ -94,7 +94,7 @@ async function onServerMessage(m) {
   if (!m) return;
   if (m.type === 'ready') {
     port = m.port;
-    // el token viaja como cookie: la ventana, los iframes, la impresión y las descargas lo envían solos
+    // the token travels as a cookie: the window, iframes, printing and downloads send it automatically
     await session.defaultSession.cookies.set({ url: `http://localhost:${port}`, name: 'pstx', value: TOKEN, httpOnly: true, sameSite: 'strict' });
     createWindow();
   } else if (m.type === 'status') {
@@ -105,27 +105,31 @@ async function onServerMessage(m) {
     if (!status.indexing && blocker != null) { powerSaveBlocker.stop(blocker); blocker = null; }
     if (wasBusy && !busy() && !status.paused) {
       notify(t('app.indexDone'), t('app.indexDoneBody'));
-      // si la ventana estaba oculta solo para seguir indexando, ya se puede cerrar
+      // if the window was hidden only to keep indexing, it can close now
       if (!win || win.isDestroyed() || !win.isVisible()) quit();
       else if (updateReady) offerUpdate();
     }
   } else if (m.type === 'fatal') {
     dialog.showErrorBox('PST Explorer', t('app.engineFailed', { msg: m.error }));
   } else if (m.type === 'lang') {
-    // el usuario cambió el idioma en la interfaz: rehacer menús y bandeja
+    // the user changed the language in the UI: rebuild menus and tray
     I.setLang(m.lang);
     Menu.setApplicationMenu(buildMenu());
     updateTray();
   }
 }
 
-// ---------------------------------------------------------------- ventana
+// ---------------------------------------------------------------- window
 
-const STATE_FILE = () => path.join(app.getPath('userData'), 'ventana.json');
+const STATE_FILE = () => path.join(app.getPath('userData'), 'window.json');
+// name used by versions up to 1.3.0, read once so the saved window size is kept
+const OLD_STATE_FILE = () => path.join(app.getPath('userData'), 'ventana.json');
 
 function createWindow() {
   let st = { width: 1400, height: 880 };
-  try { st = { ...st, ...JSON.parse(fs.readFileSync(STATE_FILE(), 'utf8')) }; } catch { /* primera vez */ }
+  for (const f of [STATE_FILE(), OLD_STATE_FILE()]) {
+    try { st = { ...st, ...JSON.parse(fs.readFileSync(f, 'utf8')) }; break; } catch { /* first run */ }
+  }
   win = new BrowserWindow({
     ...st,
     minWidth: 900,
@@ -139,7 +143,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      plugins: true, // visor de PDF integrado
+      plugins: true, // built-in PDF viewer
       spellcheck: false,
     },
   });
@@ -158,7 +162,7 @@ function createWindow() {
   win.on('maximize', save);
   win.on('unmaximize', save);
 
-  // Al cerrar mientras se indexa, seguir en la bandeja
+  // Closing while indexing keeps the app running in the tray
   win.on('close', (e) => {
     if (quitting) return;
     if (busy()) {
@@ -179,7 +183,7 @@ function createWindow() {
 function setupWebContents(wc) {
   const ours = (url) => url.startsWith(`http://localhost:${port}/`) || url.startsWith(`http://127.0.0.1:${port}/`);
   wc.setWindowOpenHandler(({ url }) => {
-    // impresión y adjuntos en el navegador: ventanas internas
+    // printing and attachments viewed in the browser: internal windows
     if (ours(url)) {
       return {
         action: 'allow',
@@ -189,7 +193,7 @@ function setupWebContents(wc) {
         },
       };
     }
-    // enlaces de los correos: navegador predeterminado (solo esquemas seguros)
+    // links inside emails: default browser (safe schemes only)
     if (/^(https?|mailto):/i.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
@@ -203,7 +207,7 @@ function setupWebContents(wc) {
 }
 
 function showWindow() {
-  if (!port) return; // el motor aún no está listo: la ventana se abrirá sola
+  if (!port) return; // the engine is not ready yet: the window will open by itself
   if (!win || win.isDestroyed()) { createWindow(); return; }
   if (win.isMinimized()) win.restore();
   win.show();
@@ -224,7 +228,7 @@ function quit() {
 app.on('before-quit', () => { quitting = true; });
 app.on('window-all-closed', () => { if (quitting || !busy()) quit(); });
 
-// Descargas (ZIP, .eml, adjuntos, CSV): diálogo «Guardar como»
+// Downloads (ZIP, .eml, attachments, CSV): "Save as" dialog
 app.whenReady().then(() => {
   session.defaultSession.on('will-download', (_e, item) => {
     item.setSaveDialogOptions({ title: t('app.save'), defaultPath: path.join(app.getPath('downloads'), item.getFilename()) });
@@ -239,7 +243,7 @@ app.whenReady().then(() => {
   });
 });
 
-// ---------------------------------------------------------------- bandeja y notificaciones
+// ---------------------------------------------------------------- tray and notifications
 
 function createTray() {
   tray = new Tray(nativeImage.createFromPath(ICON).resize({ width: 16, height: 16 }));
@@ -302,17 +306,17 @@ function setupIpc() {
       detail: t('dlg.deleteOldDetail', { dir: info.from }),
     });
     if (r.response !== 0) return { ok: false, canceled: true };
-    // solo se borra lo que forma la biblioteca, no la carpeta padre
+    // only what makes up the library is deleted, not the parent folder
     fs.rmSync(path.join(info.from, 'index'), { recursive: true, force: true });
     for (const n of ['library.json', 'library.json.tmp', 'library.db', 'library.db-wal', 'library.db-shm', 'recent.json']) fs.rmSync(path.join(info.from, n), { force: true });
-    try { fs.rmdirSync(info.from); } catch { /* quedan otros archivos: se deja la carpeta */ }
+    try { fs.rmdirSync(info.from); } catch { /* other files remain: keep the folder */ }
     info.oldDeleted = true;
     fs.writeFileSync(file, JSON.stringify(info, null, 2));
     return { ok: true };
   });
 }
 
-// ---------------------------------------------------------------- migración
+// ---------------------------------------------------------------- migration
 
 async function importLegacyIfNeeded() {
   if (fs.existsSync(path.join(DATA, 'library.json'))) return;
@@ -336,7 +340,7 @@ async function importLegacyIfNeeded() {
     if (r.response === 0) src = s.dir;
     if (r.response === 1) src = await pickLegacyFolder();
   } else {
-    // nada encontrado: no molestar; desde el menú Archivo se puede importar después
+    // nothing found: do not bother the user; it can be imported later from the File menu
     return;
   }
   if (src) await runImport(src);
@@ -354,10 +358,10 @@ async function pickLegacyFolder() {
 }
 
 async function runImport(src) {
-  // la versión anterior no debe estar abierta (sus índices podrían estar a medio escribir)
+  // the previous version must not be open (its indexes could be half-written)
   for (;;) {
     let running = false;
-    try { running = (await fetch('http://localhost:8765/api/state', { signal: AbortSignal.timeout(1500) })).ok; } catch { /* no responde */ }
+    try { running = (await fetch('http://localhost:8765/api/state', { signal: AbortSignal.timeout(1500) })).ok; } catch { /* not responding */ }
     if (!running) break;
     const r = await dialog.showMessageBox({
       type: 'warning', title: 'PST Explorer', buttons: [t('dlg.retry'), t('dlg.cancel')], defaultId: 0, cancelId: 1,
@@ -399,9 +403,9 @@ async function runImport(src) {
   }
 }
 
-// ---------------------------------------------------------------- menú
+// ---------------------------------------------------------------- menu
 
-// nombres de idioma en su propio idioma (no se traducen)
+// language names in their own language (not translated)
 const LANG_NAMES = { en: 'English', es: 'Español' };
 
 function buildMenu() {
@@ -446,7 +450,7 @@ function buildMenu() {
   return Menu.buildFromTemplate(tpl);
 }
 
-// Idioma elegido desde el menú: lo guarda el motor (settings.json) y la ventana se recarga
+// Language chosen from the menu: the engine saves it (settings.json) and the window reloads
 function changeLanguage(lang) {
   I.setLang(lang);
   Menu.setApplicationMenu(buildMenu());
@@ -456,7 +460,7 @@ function changeLanguage(lang) {
   if (win && !win.isDestroyed()) setTimeout(() => win.webContents.reload(), 200);
 }
 
-// ---------------------------------------------------------------- actualizaciones
+// ---------------------------------------------------------------- updates
 
 let updater = null;
 function setupUpdates() {
@@ -470,7 +474,7 @@ function setupUpdates() {
     updateReady = true;
     if (!busy()) offerUpdate();
   });
-  updater.on('error', () => { /* sin conexión o sin versiones: se reintenta más tarde */ });
+  updater.on('error', () => { /* offline or no releases: retried later */ });
   checkUpdates(false);
   setInterval(() => checkUpdates(false), 6 * 3600 * 1000).unref();
 }
