@@ -81,6 +81,8 @@ function build(conn, files, q) {
     }
     // copias del mismo correo en otros respaldos: se muestran una sola vez
     if (q.dups !== '1') where.push(`NOT EXISTS (SELECT 1 FROM main.dup d WHERE d.f = ${f.id} AND d.id = m.id)`);
+    // solo los correos que no están en ningún otro archivo de la biblioteca
+    if (q.only === 'unique') where.push(`EXISTS (SELECT 1 FROM main.cmp_uniq u WHERE u.f = ${f.id} AND u.id = m.id)`);
     arms.push({ f, A, where, params });
   }
   return { arms, fts, main, att, relevance: q.sort === 'relevance' && !!(main || att) };
@@ -184,7 +186,7 @@ function addConvCounts(conn, rows) {
 
 // ¿la consulta no tiene filtros? (permite usar la tabla precalculada de conversaciones)
 const isUnfiltered = (q) => !q.q && !q.folder && !q.file && !q.dateFrom && !q.dateTo && q.att !== '1' && q.unread !== '1'
-  && q.kind !== 'mail' && !q.attext && !q.ids && q.dups !== '1';
+  && q.kind !== 'mail' && !q.attext && !q.ids && q.dups !== '1' && !q.only;
 
 function threads(conn, files, q, { limit, offset = 0, count = false, exact = false, useGlobal = true } = {}) {
   const dir = q.dir === 'asc' ? 'ASC' : 'DESC';

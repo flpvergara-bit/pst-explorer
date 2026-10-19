@@ -1,7 +1,8 @@
 'use strict';
 // Proceso de consolidación de la biblioteca: detecta los correos repetidos
 // entre respaldos (mismo Message-ID, o mismo asunto+fecha+remitente si no
-// tiene) y precalcula las conversaciones globales. Corre aparte porque con
+// tiene), precalcula las conversaciones globales y la comparación entre
+// archivos (qué correos tiene cada uno que no estén en otro). Corre aparte porque con
 // cientos de miles de correos tarda algunos segundos.
 const { openDb, createLibrarySchema, setMeta } = require('./db');
 
@@ -29,7 +30,10 @@ function run({ libDbPath, files, sig }) {
     DROP TABLE IF EXISTS temp.oth;
     CREATE TEMP TABLE oth AS SELECT a.dkey, group_concat(DISTINCT a.f) AS others
       FROM allm a JOIN prim p ON p.dkey = a.dkey WHERE p.nf > 1 AND a.ord > p.mo GROUP BY a.dkey;
-    CREATE UNIQUE INDEX temp.ix_oth ON oth(dkey);`);
+    CREATE UNIQUE INDEX temp.ix_oth ON oth(dkey);
+    DROP TABLE IF EXISTS temp.fk;
+    CREATE TEMP TABLE fk AS SELECT DISTINCT dkey, f FROM allm;
+    CREATE INDEX temp.ix_fk ON fk(dkey, f);`);
 
   db.exec('BEGIN');
   db.exec(`DELETE FROM main.dup;
@@ -41,7 +45,22 @@ function run({ libDbPath, files, sig }) {
     INSERT INTO main.gconvs(conv_key, n, last_date, f, id, att, unread, senders)
       SELECT conv_key, COUNT(*), MAX(date), f, id, SUM(att) > 0, SUM(unread) > 0, substr(group_concat(DISTINCT sender), 1, 300)
       -- f, id: columnas del correo más reciente (única función MAX de la consulta)
-      FROM allm a WHERE NOT EXISTS (SELECT 1 FROM main.dup d WHERE d.f = a.f AND d.id = a.id) GROUP BY conv_key;`);
+      FROM allm a WHERE NOT EXISTS (SELECT 1 FROM main.dup d WHERE d.f = a.f AND d.id = a.id) GROUP BY conv_key;
+    -- comparación: correos únicos de cada archivo, solape entre pares y de qué archivo depende cada uno
+    DELETE FROM main.cmp_uniq;
+    INSERT INTO main.cmp_uniq(f, id) SELECT a.f, a.id FROM allm a JOIN prim p ON p.dkey = a.dkey WHERE p.nf = 1;
+    DELETE FROM main.cmp_file;
+    INSERT INTO main.cmp_file(f, total, unique_n, shared_n, intra_dup, no_id, min_date, max_date)
+      SELECT a.f, COUNT(*), SUM(p.nf = 1), SUM(p.nf > 1), COUNT(*) - COUNT(DISTINCT a.dkey),
+        SUM(a.dkey NOT LIKE 'i:%'), MIN(a.date), MAX(a.date)
+      FROM allm a JOIN prim p ON p.dkey = a.dkey GROUP BY a.f;
+    DELETE FROM main.cmp_pair;
+    INSERT INTO main.cmp_pair(a, b, shared)
+      SELECT x.f, y.f, COUNT(*) FROM allm x JOIN fk y ON y.dkey = x.dkey AND y.f <> x.f GROUP BY x.f, y.f;
+    DELETE FROM main.cmp_need;
+    INSERT INTO main.cmp_need(a, b, n)
+      SELECT x.f, y.f, COUNT(*) FROM allm x JOIN prim p ON p.dkey = x.dkey AND p.nf = 2
+        JOIN fk y ON y.dkey = x.dkey AND y.f <> x.f GROUP BY x.f, y.f;`);
   setMeta(db, 'consolidatedAt', new Date().toISOString());
   setMeta(db, 'files', files.map((f) => f.id).join(','));
   setMeta(db, 'sig', sig || '');
@@ -50,9 +69,10 @@ function run({ libDbPath, files, sig }) {
     messages: db.prepare('SELECT COUNT(*) AS n FROM allm').get().n,
     duplicates: db.prepare('SELECT COUNT(*) AS n FROM main.dup').get().n,
     conversations: db.prepare('SELECT COUNT(*) AS n FROM main.gconvs').get().n,
+    unique: db.prepare('SELECT COUNT(*) AS n FROM main.cmp_uniq').get().n,
     ms: Date.now() - t0,
   };
-  db.exec('DROP TABLE temp.allm; DROP TABLE temp.prim; DROP TABLE temp.oth;');
+  db.exec('DROP TABLE temp.allm; DROP TABLE temp.prim; DROP TABLE temp.oth; DROP TABLE temp.fk;');
   for (const f of files) db.exec(`DETACH DATABASE f${f.id}`);
   db.close();
   return stats;

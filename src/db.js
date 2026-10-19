@@ -123,6 +123,12 @@ function createLibrarySchema(db) {
     CREATE TABLE IF NOT EXISTS gconvs(conv_key TEXT PRIMARY KEY, n INTEGER, last_date INTEGER, f INTEGER, id INTEGER,
       att INTEGER, unread INTEGER, senders TEXT);
     CREATE INDEX IF NOT EXISTS ix_gconvs_date ON gconvs(last_date);
+    -- comparación entre archivos: qué tiene cada uno que no esté en los demás
+    CREATE TABLE IF NOT EXISTS cmp_file(f INTEGER PRIMARY KEY, total INTEGER, unique_n INTEGER, shared_n INTEGER,
+      intra_dup INTEGER, no_id INTEGER, min_date INTEGER, max_date INTEGER);
+    CREATE TABLE IF NOT EXISTS cmp_pair(a INTEGER, b INTEGER, shared INTEGER, PRIMARY KEY(a, b)) WITHOUT ROWID;
+    CREATE TABLE IF NOT EXISTS cmp_need(a INTEGER, b INTEGER, n INTEGER, PRIMARY KEY(a, b)) WITHOUT ROWID;
+    CREATE TABLE IF NOT EXISTS cmp_uniq(f INTEGER, id INTEGER, PRIMARY KEY(f, id)) WITHOUT ROWID;
   `);
 }
 

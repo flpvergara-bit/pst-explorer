@@ -158,8 +158,11 @@ function requestConsolidation() {
   });
 }
 
-// Firma de la biblioteca: archivos activos y cuántos correos tiene indexados cada uno
-const librarySignature = () => active().map((a) => `${a.id}:${fileStatus(lib.byId(a.id)).indexed}`).join(',');
+// Firma de la biblioteca: versión del cálculo, archivos activos y cuántos correos tiene indexados
+// cada uno. Si cambia la versión (p. ej. tras una actualización que agrega datos a la consolidación),
+// se recalcula solo library.db: los índices de cada PST no se tocan.
+const CONSOLIDATE_VERSION = 'c2';
+const librarySignature = () => CONSOLIDATE_VERSION + '|' + active().map((a) => `${a.id}:${fileStatus(lib.byId(a.id)).indexed}`).join(',');
 
 // ¿la consolidación guardada corresponde a los archivos activos actuales?
 function consolidationStale() {
@@ -599,6 +602,45 @@ app.get('/api/browse', wrap(async (req, res) => {
   entries.sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
   const parent = path.dirname(dir);
   res.json({ dir, parent: parent === dir ? '' : parent, entries });
+}));
+
+// ================================================================ API: comparación
+
+// Qué tiene cada archivo que no esté en los demás, cuánto se solapan y cuáles
+// podrían descartarse (ver src/consolidate.js). Repetido = mismo Message-ID.
+app.get('/api/compare', wrap(async (req, res) => {
+  const c = conn();
+  const cmp = new Map(c.prepare('SELECT * FROM main.cmp_file').all().map((r) => [r.f, r]));
+  const pairs = c.prepare('SELECT a, b, shared FROM main.cmp_pair').all();
+  const need = c.prepare('SELECT a, b, n FROM main.cmp_need WHERE n > 0 ORDER BY n DESC').all();
+  const stale = consolidationStale();
+  const files = lib.files.map((f) => {
+    const st = fileStatus(f);
+    const isActive = active().some((a) => a.id === f.id);
+    const r = isActive ? cmp.get(f.id) : null;
+    let verdict;
+    if (!isActive) verdict = { kind: 'excluded', reason: !f.enabled ? 'desactivado' : (lib.overLimit || []).includes(f.id) ? 'fuera del límite de archivos activos' : 'sin índice' };
+    else if (!r) verdict = { kind: st.complete && !st.indexed ? 'empty' : 'pending' };
+    else if (r.unique_n > 0) verdict = { kind: 'keep' };
+    else verdict = { kind: 'discard', keepWith: need.filter((n) => n.a === f.id).map((n) => ({ id: n.b, n: n.n })) };
+    return {
+      id: f.id, name: f.name, path: f.path, size: f.size, active: isActive, complete: st.complete, indexed: st.indexed,
+      stats: r ? { total: r.total, unique: r.unique_n, shared: r.shared_n, intraDup: r.intra_dup, noId: r.no_id, minDate: r.min_date, maxDate: r.max_date } : null,
+      overlap: pairs.filter((p) => p.a === f.id).map((p) => ({ id: p.b, shared: p.shared })),
+      verdict,
+    };
+  });
+  // dos archivos «descartables» que dependen uno del otro: no se pueden descartar ambos
+  const discardable = new Set(files.filter((f) => f.verdict.kind === 'discard').map((f) => f.id));
+  for (const f of files) {
+    if (f.verdict.kind === 'discard') f.verdict.mutual = f.verdict.keepWith.filter((k) => discardable.has(k.id)).map((k) => k.id);
+  }
+  res.json({ files, stale, consolidating: !!J.consolidating, indexing: !!J.job, lastConsolidation: J.lastConsolidation });
+}));
+
+app.post('/api/compare/refresh', wrap(async (req, res) => {
+  requestConsolidation();
+  res.json({ ok: true });
 }));
 
 // ================================================================ API: datos

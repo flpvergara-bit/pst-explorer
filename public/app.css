@@ -316,6 +316,24 @@ details summary { cursor: pointer; margin-top: 14px; color: var(--accent); }
 .litem .err, .err .i { color: var(--danger); }
 .lib-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; gap: 10px; }
 .small-note { font-size: 11px; margin-top: 12px; }
+.lib-foot-btns { display: flex; gap: 6px; flex: none; }
+
+/* ---------- comparar archivos ---------- */
+#cmpDlg { width: min(1240px, 97vw); }
+.cmp-intro { margin: 6px 0 0; }
+.cmp-wrap { overflow: auto; max-height: 46vh; margin-top: 10px; border: 1px solid var(--line); border-radius: 8px; }
+.cmp-table { border-collapse: collapse; width: 100%; font-size: 12px; }
+.cmp-table th { position: sticky; top: 0; background: var(--bg2); text-align: left; font-weight: 600; white-space: nowrap; }
+.cmp-table th, .cmp-table td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.cmp-table tr:last-child td { border-bottom: 0; }
+.cmp-table .num { text-align: right; white-space: nowrap; }
+.cmp-table .nw { white-space: nowrap; }
+.cmp-table .verdict { min-width: 260px; }
+.cmp-table .verdict .err { display: block; margin: 4px 0 0; }
+.cmp-table tr.off { opacity: .6; }
+.cmp-matrix td.heat, .cmp-matrix td.diag { text-align: center; }
+.cmp-matrix thead th { white-space: normal; min-width: 70px; max-width: 120px; vertical-align: bottom; font-size: 11px; }
+.cmp-matrix th.rowh { position: sticky; left: 0; background: var(--bg2); }
 .banner.warn { background: #fff8c5; color: #6b4f00; }
 @media (prefers-color-scheme: dark) {
   .tstate.warn, .banner.warn { background: #3b2e00; color: #e3b341; }

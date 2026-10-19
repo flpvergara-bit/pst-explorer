@@ -1,6 +1,6 @@
 {
   "name": "pst-explorer",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Visor local para revisar y buscar en varios archivos PST/OST de Outlook: correos, conversaciones, adjuntos, búsqueda de texto completo (incluido el contenido de los adjuntos), impresión y exportación.",
   "main": "electron/main.js",
   "private": true,

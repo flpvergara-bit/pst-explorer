@@ -46,6 +46,7 @@
         <button data-act="print">Imprimir resultados (máx. 200)</button>
         <hr>
         <button data-act="library">Biblioteca de archivos…</button>
+        <button data-act="compare">Comparar archivos (duplicados)…</button>
         <button data-act="pause" id="menuPause">Pausar indexado</button>
       </div>
     </div>
@@ -151,7 +152,10 @@
       <div id="libList" class="lib-list"></div>
       <div class="lib-foot">
         <span id="libSummary" class="muted"></span>
-        <button type="button" id="btnPause" class="btn">Pausar indexado</button>
+        <span class="lib-foot-btns">
+          <button type="button" id="btnCompare" class="btn" title="Qué tiene cada archivo que no esté en los demás">Comparar archivos…</button>
+          <button type="button" id="btnPause" class="btn">Pausar indexado</button>
+        </span>
       </div>
       <details id="browseBox">
         <summary>Explorar carpetas del equipo</summary>
@@ -160,6 +164,20 @@
       </details>
       <p class="muted small-note">Los archivos se indexan de a uno: primero los correos de todos (del más pequeño al más grande) y después el texto de los adjuntos. Puedes buscar desde el primer momento; los resultados se completan a medida que avanza. Los índices se reconocen por el contenido del archivo, aunque lo muevas de carpeta o de disco. Un correo repetido en varios respaldos se muestra una sola vez.</p>
       <p id="libNote" class="muted small-note"></p>
+    </form>
+  </dialog>
+
+  <dialog id="cmpDlg" class="dlg wide">
+    <form method="dialog" class="dlg-inner">
+      <header><h3>Comparar archivos</h3><button class="btn ghost icon" value="cancel" title="Cerrar">✕</button></header>
+      <p class="muted cmp-intro">Para cada archivo: cuántos elementos no están en ningún otro respaldo (información única) y cuántos ya tienen copia en otro. Un archivo sin elementos únicos se puede descartar sin perder correos, siempre que conserves los archivos que se indican.</p>
+      <p id="cmpMsg" class="lib-msg" hidden></p>
+      <div id="cmpBody"></div>
+      <div class="lib-foot">
+        <span id="cmpSummary" class="muted"></span>
+        <button type="button" id="btnCmpRefresh" class="btn">Recalcular</button>
+      </div>
+      <p class="muted small-note">Repetido = mismo Message-ID (el identificador que Outlook asigna a cada correo); los elementos sin identificador se comparan por asunto, fecha y remitente, y los que no tienen nada de eso (algunos contactos o notas) cuentan como únicos. Solo se comparan los archivos activos de la biblioteca. El veredicto es para descartar <b>un archivo a la vez</b>: para simular que descartas uno, desactívalo en la Biblioteca y la comparación se recalcula sin él. Nunca se modifica ni borra ningún PST.</p>
     </form>
   </dialog>
 

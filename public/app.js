@@ -154,7 +154,7 @@ function highlightDoc(doc, re) {
 
 // ------------------------------------------------------------------ estado
 
-const DEFAULT_FILTERS = { dateFrom: '', dateTo: '', att: false, unread: false, mail: false, attext: '', inatt: true, dups: false };
+const DEFAULT_FILTERS = { dateFrom: '', dateTo: '', att: false, unread: false, mail: false, attext: '', inatt: true, dups: false, only: '' };
 const state = {
   lib: null, // último /api/state
   view: 'mail', // mail | threads | attachments
@@ -207,6 +207,7 @@ function filterParams({ forExport = false } = {}) {
   if (f.mail) p.set('kind', 'mail');
   if (f.attext) p.set('attext', f.attext);
   if (f.dups) p.set('dups', '1');
+  if (f.only) p.set('only', f.only);
   p.set('sort', state.sort);
   p.set('dir', state.dir);
   if (state.view === 'attachments' && !forExport) {
@@ -626,6 +627,7 @@ function renderChips() {
   if (f.attext) chips.push(['attext', `Adjunto: ${$(`#advForm [name=attext] option[value="${f.attext}"]`)?.textContent || f.attext}`]);
   if (!f.inatt) chips.push(['inatt', 'Sin buscar en adjuntos']);
   if (f.dups) chips.push(['dups', 'Con copias repetidas']);
+  if (f.only === 'unique') chips.push(['only', 'Solo los que no están en otros archivos']);
   $('#chips').innerHTML = chips.map(([k, t]) => `<span class="chip">${esc(t)}<button data-k="${k}" title="Quitar">✕</button></span>`).join('');
   $('#btnAdv').classList.toggle('on', chips.length > 0);
 }
@@ -1014,6 +1016,7 @@ $('#menu').addEventListener('click', async (e) => {
   $('#menu').hidden = true;
   const act = b.dataset.act;
   if (act === 'library') return showLibrary();
+  if (act === 'compare') return showCompare();
   if (act === 'pause') return togglePause();
   const p = filterParams({ forExport: true });
   // las exportaciones se basan en correos, no en conversaciones ni archivos
@@ -1225,6 +1228,130 @@ function afterLibraryChange() {
   updateAttSel();
   refreshState(true);
 }
+
+// ------------------------------------------------------------------ comparar archivos
+
+$('#btnCompare').addEventListener('click', () => { $('#libDlg').close(); showCompare(); });
+$('#btnCmpRefresh').addEventListener('click', async () => {
+  try { await api('/api/compare/refresh', {}); } catch (e) { return toast(e.message, true); }
+  renderCompare();
+});
+
+let cmpTimer = 0;
+function showCompare() {
+  if (!$('#cmpDlg').open) $('#cmpDlg').showModal();
+  renderCompare();
+}
+$('#cmpDlg').addEventListener('close', () => clearTimeout(cmpTimer));
+
+const shortName = (n) => String(n || '').replace(/\.(pst|ost)$/i, '');
+function fmtPeriod(a, b) {
+  if (a == null || b == null) return '';
+  const m = (ms) => { const d = new Date(ms); return `${MONTHS[d.getMonth()]} ${d.getFullYear()}`; };
+  return m(a) === m(b) ? m(a) : `${m(a)} – ${m(b)}`;
+}
+
+async function renderCompare() {
+  clearTimeout(cmpTimer);
+  let data;
+  try { data = await api('/api/compare'); } catch (e) {
+    $('#cmpMsg').textContent = e.message;
+    $('#cmpMsg').className = 'lib-msg err';
+    $('#cmpMsg').hidden = false;
+    return;
+  }
+  if (!$('#cmpDlg').open) return;
+  const files = data.files;
+  const byId = new Map(files.map((f) => [f.id, f]));
+  const nameOf = (id) => esc(shortName((byId.get(id) || {}).name || `archivo ${id}`));
+  const msg = data.consolidating ? 'Comparando los archivos… (tarda unos segundos)'
+    : data.indexing ? 'Hay archivos indexándose: las cifras se actualizan cuando termina cada uno.'
+      : data.stale ? 'La comparación no está al día. Usa «Recalcular».' : '';
+  $('#cmpMsg').textContent = msg;
+  $('#cmpMsg').className = 'lib-msg';
+  $('#cmpMsg').hidden = !msg;
+
+  if (!files.length) {
+    $('#cmpBody').innerHTML = '<div class="muted lib-empty">La biblioteca está vacía.</div>';
+  } else {
+    const rows = files.map((f) => {
+      const s = f.stats;
+      const v = f.verdict;
+      let verdict;
+      if (v.kind === 'excluded') verdict = `<span class="muted">No comparado: ${esc(v.reason)}</span>`;
+      else if (v.kind === 'empty') verdict = '<span class="tag warn">Descartable</span> No tiene correos (archivo vacío o ilegible).';
+      else if (v.kind === 'pending' || !s) verdict = '<span class="muted">Calculando…</span>';
+      else if (v.kind === 'keep') verdict = `<span class="tag ok">Conservar</span> ${fmtNum(s.unique)} elemento(s) solo están en este archivo`;
+      else {
+        verdict = '<span class="tag warn">Descartable</span> Todo su contenido está en otros archivos.';
+        if (v.keepWith.length) verdict += ` Si lo descartas, conserva: ${v.keepWith.map((k) => `<b>${nameOf(k.id)}</b> <span class="muted">(${fmtNum(k.n)} solo ahí)</span>`).join(', ')}.`;
+        else if (s.total) verdict += ' Cada elemento tiene al menos dos copias más.';
+        if (v.mutual && v.mutual.length) verdict += ` <span class="err">${I.warn} ${v.mutual.map(nameOf).join(', ')} también figura como descartable: descarta solo uno y vuelve a comparar.</span>`;
+      }
+      if (s && !f.complete) verdict += ' <span class="muted">· índice incompleto, resultado provisional</span>';
+      const pct = s && s.total ? Math.round((s.unique / s.total) * 100) : 0;
+      return `<tr class="${f.active ? '' : 'off'}">
+        <td><b title="${esc(f.path)}">${esc(shortName(f.name))}</b><div class="muted">${fmtSize(f.size)}</div></td>
+        <td class="nw">${s ? fmtPeriod(s.minDate, s.maxDate) : ''}</td>
+        <td class="num">${s ? fmtNum(s.total) : ''}</td>
+        <td class="num">${s ? `<b>${fmtNum(s.unique)}</b><div class="muted">${pct}%</div>` : ''}</td>
+        <td class="num">${s ? fmtNum(s.shared) : ''}</td>
+        <td class="num" title="Mismo correo guardado más de una vez dentro de este archivo">${s ? fmtNum(s.intraDup) : ''}</td>
+        <td class="verdict">${verdict}</td>
+        <td>${s && s.unique ? `<button type="button" class="btn small" data-uniq="${f.id}" title="Mostrar en la lista solo los elementos de este archivo que no están en ningún otro (luego se pueden exportar)">Ver únicos</button>` : ''}</td>
+      </tr>`;
+    }).join('');
+
+    const cmp = files.filter((f) => f.stats && f.stats.total);
+    let matrix = '';
+    if (cmp.length > 1) {
+      const head = cmp.map((b) => `<th title="${esc(b.name)}">${esc(shortName(b.name))}</th>`).join('');
+      const body = cmp.map((a) => {
+        const ov = new Map(a.overlap.map((o) => [o.id, o.shared]));
+        const cells = cmp.map((b) => {
+          if (a.id === b.id) return '<td class="muted diag">—</td>';
+          const n = ov.get(b.id) || 0;
+          const p = (n / a.stats.total) * 100;
+          const txt = n === 0 ? '0%' : p < 1 ? '<1%' : `${Math.floor(p)}%`;
+          return `<td class="num heat" style="background:color-mix(in srgb, var(--accent) ${Math.round(p * 0.35)}%, transparent)"
+            title="${fmtNum(n)} de los ${fmtNum(a.stats.total)} elementos de ${esc(shortName(a.name))} están también en ${esc(shortName(b.name))}">${txt}</td>`;
+        }).join('');
+        return `<tr><th class="rowh" title="${esc(a.name)}">${esc(shortName(a.name))}</th>${cells}</tr>`;
+      }).join('');
+      matrix = `<h4>Solape: de los elementos de cada fila, qué parte está también en cada columna</h4>
+        <div class="cmp-wrap"><table class="cmp-table cmp-matrix"><thead><tr><th></th>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+    }
+
+    $('#cmpBody').innerHTML = `<div class="cmp-wrap"><table class="cmp-table">
+      <thead><tr><th>Archivo</th><th>Período</th><th class="num">Elementos</th><th class="num">Únicos</th>
+        <th class="num">Con copia en otro</th><th class="num">Repetidos dentro</th><th>Veredicto</th><th></th></tr></thead>
+      <tbody>${rows}</tbody></table></div>${matrix}`;
+  }
+  const done = files.filter((f) => f.stats);
+  const total = done.reduce((n, f) => n + f.stats.total, 0);
+  const uniq = done.reduce((n, f) => n + f.stats.unique, 0);
+  $('#cmpSummary').textContent = done.length ? `${done.length} archivo(s) comparados · ${fmtNum(total)} elementos · ${fmtNum(uniq)} únicos` : '';
+  if (data.consolidating || data.indexing) cmpTimer = setTimeout(renderCompare, data.consolidating ? 1500 : 5000);
+}
+
+$('#cmpBody').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-uniq]');
+  if (!b) return;
+  const fid = Number(b.dataset.uniq);
+  $('#cmpDlg').close();
+  // ver en la lista solo los elementos únicos de ese archivo (desde ahí se pueden exportar)
+  state.node = { type: 'file', id: fid };
+  state.nodeName = fileLabel(fid);
+  state.filters.only = 'unique';
+  qInput.value = '';
+  state.q = '';
+  state.terms = [];
+  if (state.sort === 'relevance') { state.sort = 'date'; state.sortTouched = false; $('#sort').value = 'date'; }
+  state.selected = null;
+  renderChips();
+  renderTree();
+  vlist.load();
+});
 
 // ------------------------------------------------------------------ estado e indexado
 
