@@ -13,6 +13,8 @@ const R = require('./src/pstreader');
 const Q = require('./src/query');
 const { Library, scanFolder, MAX_ACTIVE } = require('./src/library');
 const { Readers } = require('./src/readers');
+const I = require('./src/i18n');
+const { t } = I;
 
 // Modo escritorio: el servidor corre como utilityProcess de Electron (ver electron/main.js)
 const DESKTOP = !!process.parentPort;
@@ -27,13 +29,23 @@ const TOKEN = process.env.PSTX_TOKEN || '';
 const CHILD_ENV = DESKTOP ? { ...process.env, ELECTRON_RUN_AS_NODE: '1' } : process.env;
 const toMain = (m) => { if (DESKTOP) process.parentPort.postMessage(m); };
 
+// Preferencias (idioma) junto a la biblioteca: se conservan al actualizar la app
+const settings = I.loadSettings(DATA_DIR);
+I.setLang(settings.lang);
+function setLanguage(lang) {
+  if (!I.LANGS.includes(lang)) throw httpError(400, t('err.badLang'));
+  settings.lang = I.setLang(lang);
+  I.saveSettings(DATA_DIR, settings);
+  toMain({ type: 'lang', lang: settings.lang });
+}
+
 const lib = new Library(DATA_DIR);
 lib.reconnect();
 const readers = new Readers(lib);
 
 const conn = () => lib.conn;
 const active = () => lib.active;
-const fileName = (fid) => (lib.byId(fid) || {}).name || `archivo ${fid}`;
+const fileName = (fid) => (lib.byId(fid) || {}).name || `#${fid}`;
 const httpError = (status, msg) => Object.assign(new Error(msg), { status });
 
 // ================================================================ cola de indexado
@@ -123,7 +135,7 @@ function startJob(f, phase, careful) {
       J.restarts.set(f.id, n);
       console.error(`Indexador detenido en ${f.name} (código ${code ?? signal}); reanudando en modo cuidadoso (${n})…`);
       if (n <= 25) return startJob(f, phase, true);
-      J.failed.set(f.id, 'El indexador se detuvo demasiadas veces. Puede que el archivo esté muy dañado.');
+      J.failed.set(f.id, t('err.indexerCrashed'));
     }
     schedule();
   });
@@ -196,12 +208,12 @@ const hasToken = (req) => {
 // Protección contra DNS rebinding, peticiones de otros orígenes y (en escritorio) de otros programas
 app.use((req, res, next) => {
   const host = (req.headers.host || '').toLowerCase();
-  if (host !== `localhost:${port}` && host !== `127.0.0.1:${port}`) return res.status(403).send('Host no permitido');
-  if (!hasToken(req)) return res.status(403).send('Acceso no autorizado');
+  if (host !== `localhost:${port}` && host !== `127.0.0.1:${port}`) return res.status(403).send('Host not allowed');
+  if (!hasToken(req)) return res.status(403).send('Unauthorized');
   if (req.method !== 'GET' && req.method !== 'HEAD') {
-    if (!req.is('application/json')) return res.status(415).send('Se requiere JSON');
+    if (!req.is('application/json')) return res.status(415).send('JSON required');
     const origin = req.headers.origin;
-    if (origin && origin !== `http://localhost:${port}` && origin !== `http://127.0.0.1:${port}`) return res.status(403).send('Origen no permitido');
+    if (origin && origin !== `http://localhost:${port}` && origin !== `http://127.0.0.1:${port}`) return res.status(403).send('Origin not allowed');
   }
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
@@ -227,7 +239,7 @@ function safeName(name, max = 120) {
     const ext = R.extOf(n);
     n = ext && ext.length < 10 ? n.slice(0, max - ext.length - 1).trim() + '.' + ext : n.slice(0, max).trim();
   }
-  return n || 'sin_nombre';
+  return n || t('file.unnamed');
 }
 
 function contentDisposition(type, name) {
@@ -256,13 +268,13 @@ function fmtDate(ms, withTime = true) {
 }
 function fmtDateLong(ms) {
   if (ms == null) return '';
-  return new Date(ms).toLocaleString('es-CL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return new Date(ms).toLocaleString(I.locale(), { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 const intParam = (v, def, max) => Math.min(Math.max(Number.parseInt(v, 10) || def, 0), max);
 const aliasOf = (fid) => {
   const a = active().find((x) => x.id === fid);
-  if (!a) throw httpError(404, 'El archivo no está activo en la biblioteca');
+  if (!a) throw httpError(404, t('err.notActive'));
   return a.alias;
 };
 const withRefs = (rows) => rows.map((r) => ({ ...r, ref: `${r.src}-${r.id ?? r.msg_id}` }));
@@ -271,7 +283,7 @@ const withRefs = (rows) => rows.map((r) => ({ ...r, ref: `${r.src}-${r.id ?? r.m
 
 function indexRow(ref) {
   const p = Q.parseMsgRef(ref);
-  if (!p) throw httpError(404, 'Referencia inválida');
+  if (!p) throw httpError(404, t('err.badRef'));
   const A = aliasOf(p.f);
   const row = conn().prepare(`SELECT m.*, fo.path AS folder FROM ${A}.messages m LEFT JOIN ${A}.folders fo ON fo.id = m.folder_id WHERE m.id = ?`).get(p.nid);
   return { p, A, row };
@@ -339,7 +351,7 @@ function bodyHtml(ref, { forPrint = false } = {}) {
     if (e.status !== 410) throw e;
     const { row } = indexRow(ref);
     return `<div style="padding:10px;border:1px solid #d0d7de;border-radius:6px;background:#fff8c5;margin-bottom:12px">
-      ⚠ ${esc(e.message)}<br>Se muestra el inicio del texto guardado en el índice.</div><pre class="pst-plain">${esc(row ? row.snippet : '')}…</pre>`;
+      ⚠ ${esc(e.message)}<br>${esc(t('print.fromIndex'))}</div><pre class="pst-plain">${esc(row ? row.snippet : '')}…</pre>`;
   }
   const body = R.getBody(msg);
   const atts = R.listAttachments(msg);
@@ -396,7 +408,7 @@ async function buildEml(msg) {
   const body = R.getBody(msg);
   const atts = R.listAttachments(msg);
   if (body.type === 'html') R.markInline(atts, body.content);
-  const addr = (a) => ({ name: a.name || a.email, address: a.email || 'desconocido@invalid' });
+  const addr = (a) => ({ name: a.name || a.email, address: a.email || 'unknown@invalid' });
   const attachments = [];
   for (const a of atts) {
     if (a.embedded) {
@@ -442,7 +454,7 @@ function startZip(res, name) {
 }
 
 function msgFolderName(row) {
-  return safeName(`${fmtDate(row.date).replace(':', 'h').replace(' ', '_')} - ${row.subject || '(sin asunto)'} - ${row.sender_name || ''}`, 110);
+  return safeName(`${fmtDate(row.date).replace(':', 'h').replace(' ', '_')} - ${row.subject || t('file.noSubject')} - ${row.sender_name || ''}`, 110);
 }
 
 // Datos de la importación desde una versión anterior (los escribe electron/migrate.js)
@@ -483,7 +495,13 @@ app.get('/api/state', wrap(async (req, res) => {
     desktop: DESKTOP,
     dataDir: DATA_DIR,
     migration: readMigration(),
+    lang: I.getLang(),
   });
+}));
+
+app.post('/api/settings', wrap(async (req, res) => {
+  if (req.body.lang != null) setLanguage(String(req.body.lang));
+  res.json({ ok: true, lang: I.getLang() });
 }));
 
 app.post('/api/library/add', wrap(async (req, res) => {
@@ -495,7 +513,7 @@ app.post('/api/library/add', wrap(async (req, res) => {
 
 app.post('/api/library/add-folder', wrap(async (req, res) => {
   const dir = String(req.body.dir || '');
-  if (!dir || !fs.existsSync(dir)) throw httpError(400, 'La carpeta no existe');
+  if (!dir || !fs.existsSync(dir)) throw httpError(400, t('err.noFolder'));
   const found = scanFolder(dir);
   const r = lib.add(found);
   if (r.added.length) libraryChanged();
@@ -506,7 +524,7 @@ app.post('/api/library/remove', wrap(async (req, res) => {
   const id = Number(req.body.id);
   stopJob(id);
   readers.close(id);
-  if (!lib.remove(id, !!req.body.deleteIndex)) throw httpError(404, 'No existe');
+  if (!lib.remove(id, !!req.body.deleteIndex)) throw httpError(404, t('err.notFound'));
   J.failed.delete(id);
   libraryChanged();
   res.json({ ok: true });
@@ -514,7 +532,7 @@ app.post('/api/library/remove', wrap(async (req, res) => {
 
 app.post('/api/library/enable', wrap(async (req, res) => {
   const f = lib.byId(req.body.id);
-  if (!f) throw httpError(404, 'No existe');
+  if (!f) throw httpError(404, t('err.notFound'));
   f.enabled = !!req.body.enabled;
   lib.save();
   if (!f.enabled) stopJob(f.id);
@@ -524,7 +542,7 @@ app.post('/api/library/enable', wrap(async (req, res) => {
 
 app.post('/api/library/reindex', wrap(async (req, res) => {
   const f = lib.byId(req.body.id);
-  if (!f) throw httpError(404, 'No existe');
+  if (!f) throw httpError(404, t('err.notFound'));
   stopJob(f.id);
   readers.close(f.id);
   J.failed.delete(f.id);
@@ -553,23 +571,24 @@ app.post('/api/library/pause', wrap(async (req, res) => {
 
 // Diálogos nativos de Windows para elegir archivos o una carpeta
 app.post('/api/library/pick', wrap(async (req, res) => {
-  if (process.platform !== 'win32') throw httpError(501, 'Solo disponible en Windows');
+  if (process.platform !== 'win32') throw httpError(501, t('err.windowsOnly'));
   const folder = req.body.mode === 'folder';
+  const psq = (v) => `'${String(v).replace(/'/g, "''")}'`;
   const ps = `
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
     Add-Type -AssemblyName System.Windows.Forms
     $owner = New-Object System.Windows.Forms.Form -Property @{ TopMost = $true; ShowInTaskbar = $false; WindowState = 'Minimized' }
     ${folder ? `
     $d = New-Object System.Windows.Forms.FolderBrowserDialog
-    $d.Description = 'Carpeta que contiene los archivos PST/OST'
+    $d.Description = ${psq(t('pick.folderTitle'))}
     if ($d.ShowDialog($owner) -eq 'OK') { $d.SelectedPath }` : `
     $d = New-Object System.Windows.Forms.OpenFileDialog
-    $d.Title = 'Agregar archivos de datos de Outlook'
+    $d.Title = ${psq(t('pick.filesTitle'))}
     $d.Multiselect = $true
-    $d.Filter = 'Archivos de Outlook (*.pst;*.ost)|*.pst;*.ost|Todos los archivos (*.*)|*.*'
+    $d.Filter = ${psq(`${t('pick.filter')} (*.pst;*.ost)|*.pst;*.ost|${t('pick.all')} (*.*)|*.*`)}
     if ($d.ShowDialog($owner) -eq 'OK') { $d.FileNames -join [char]10 }`}`;
   execFile('powershell.exe', ['-NoProfile', '-STA', '-Command', ps], { timeout: 10 * 60 * 1000, encoding: 'utf8' }, (err, stdout) => {
-    if (err) return res.status(500).json({ error: 'No se pudo abrir el diálogo: ' + err.message });
+    if (err) return res.status(500).json({ error: t('err.dialog', { msg: err.message }) });
     const lines = stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
     res.json(folder ? { dir: lines[0] || null } : { paths: lines });
   });
@@ -583,7 +602,7 @@ app.get('/api/browse', wrap(async (req, res) => {
       const drives = [];
       for (const l of 'CDEFGHIJKLMNOPQRSTUVWXYZ') if (fs.existsSync(`${l}:\\`)) drives.push({ name: `${l}:\\`, path: `${l}:\\`, dir: true });
       const home = require('os').homedir();
-      return res.json({ dir: '', parent: null, entries: [{ name: 'Documentos', path: path.join(home, 'Documents'), dir: true }, { name: 'Descargas', path: path.join(home, 'Downloads'), dir: true }, { name: 'Escritorio', path: path.join(home, 'Desktop'), dir: true }, ...drives] });
+      return res.json({ dir: '', parent: null, entries: [{ name: t('browse.documents'), path: path.join(home, 'Documents'), dir: true }, { name: t('browse.downloads'), path: path.join(home, 'Downloads'), dir: true }, { name: t('browse.desktop'), path: path.join(home, 'Desktop'), dir: true }, ...drives] });
     }
     dir = '/';
   }
@@ -599,7 +618,7 @@ app.get('/api/browse', wrap(async (req, res) => {
       entries.push({ name: e.name, path: full, dir: false, size });
     }
   }
-  entries.sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
+  entries.sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name, I.locale(), { sensitivity: 'base' }));
   const parent = path.dirname(dir);
   res.json({ dir, parent: parent === dir ? '' : parent, entries });
 }));
@@ -619,7 +638,7 @@ app.get('/api/compare', wrap(async (req, res) => {
     const isActive = active().some((a) => a.id === f.id);
     const r = isActive ? cmp.get(f.id) : null;
     let verdict;
-    if (!isActive) verdict = { kind: 'excluded', reason: !f.enabled ? 'desactivado' : (lib.overLimit || []).includes(f.id) ? 'fuera del límite de archivos activos' : 'sin índice' };
+    if (!isActive) verdict = { kind: 'excluded', reason: !f.enabled ? 'disabled' : (lib.overLimit || []).includes(f.id) ? 'overLimit' : 'noIndex' };
     else if (!r) verdict = { kind: st.complete && !st.indexed ? 'empty' : 'pending' };
     else if (r.unique_n > 0) verdict = { kind: 'keep' };
     else verdict = { kind: 'discard', keepWith: need.filter((n) => n.a === f.id).map((n) => ({ id: n.b, n: n.n })) };
@@ -728,7 +747,7 @@ app.get('/api/message/:ref/att/:idx', wrap(async (req, res) => {
   const msg = readers.message(req.params.ref);
   const idx = Number(req.params.idx);
   const a = R.listAttachments(msg).find((x) => x.idx === idx);
-  if (!a) throw httpError(404, 'Adjunto no encontrado');
+  if (!a) throw httpError(404, t('err.attNotFound'));
   let data;
   let mime = a.mime;
   let name = a.name;
@@ -754,7 +773,7 @@ app.get('/api/message/:ref/eml', wrap(async (req, res) => {
   const buf = await buildEml(msg);
   const d = R.messageDate(msg);
   res.setHeader('Content-Type', 'message/rfc822');
-  res.setHeader('Content-Disposition', contentDisposition('attachment', safeName(`${fmtDate(d, false)} ${R.safe(() => msg.subject) || 'correo'}`) + '.eml'));
+  res.setHeader('Content-Disposition', contentDisposition('attachment', safeName(`${fmtDate(d, false)} ${R.safe(() => msg.subject) || t('file.mail')}`) + '.eml'));
   res.end(buf);
 }));
 
@@ -764,7 +783,7 @@ app.get('/api/message/:ref/attachments.zip', wrap(async (req, res) => {
   const body = R.getBody(msg);
   const atts = R.listAttachments(msg);
   if (body.type === 'html') R.markInline(atts, body.content);
-  const z = startZip(res, safeName(`Adjuntos - ${R.safe(() => msg.subject) || 'correo'}`) + '.zip');
+  const z = startZip(res, safeName(t('file.attachmentsOf', { name: R.safe(() => msg.subject) || t('file.mail') })) + '.zip');
   const names = new Set();
   for (const a of atts) {
     if (z.isAborted()) break;
@@ -796,7 +815,7 @@ app.get('/api/export/csv', wrap(async (req, res) => {
     const s = String(v ?? '');
     return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
-  const lines = [['Fecha', 'De', 'Correo remitente', 'Para', 'CC', 'Asunto', 'Archivo PST', 'Carpeta', 'N° adjuntos', 'Adjuntos', 'Tamaño (KB)', 'Tipo', 'ID'].join(';')];
+  const lines = [t('csv.headers').join(';')];
   for (const r of rows) {
     lines.push([fmtDate(r.date), r.sender_name, r.sender_email, r.to_text, r.cc_text, r.subject, fileName(r.src), folders.get(`${r.src}:${r.folder_id}`),
       r.att_count, r.att_count ? attStmt.get(r.src).get(r.id).n : '', Math.round((r.size || 0) / 1024), r.msg_class, `${r.src}-${r.id}`].map(cell).join(';'));
@@ -827,7 +846,7 @@ app.get('/api/export/attachments.zip', wrap(async (req, res) => {
   const flat = req.query.flat === '1';
   const multi = new Set(rows.map((r) => r.src)).size > 1;
   const exts = req.query.ext ? String(req.query.ext).toLowerCase().split(',').map((s) => s.trim().replace(/^\./, '')) : null;
-  const z = startZip(res, req.query.name ? safeName(req.query.name) + '.zip' : `Adjuntos ${fmtDate(Date.now(), false)}.zip`);
+  const z = startZip(res, req.query.name ? safeName(req.query.name) + '.zip' : `${safeName(t('file.attachmentsDated', { date: fmtDate(Date.now(), false) }))}.zip`);
   const names = new Set();
   for (const r of rows) {
     if (z.isAborted()) break;
@@ -857,7 +876,7 @@ app.get('/api/export/eml.zip', wrap(async (req, res) => {
   const rows = byFile(selectRows(req.query));
   const folders = new Map();
   for (const a of active()) for (const f of conn().prepare(`SELECT id, path FROM ${a.alias}.folders`).all()) folders.set(`${a.id}:${f.id}`, f.path);
-  const z = startZip(res, req.query.name ? safeName(req.query.name) + '.zip' : `Correos ${fmtDate(Date.now(), false)}.zip`);
+  const z = startZip(res, req.query.name ? safeName(req.query.name) + '.zip' : `${safeName(t('file.mailsDated', { date: fmtDate(Date.now(), false) }))}.zip`);
   const names = new Set();
   for (const r of rows) {
     if (z.isAborted()) break;
@@ -886,22 +905,22 @@ app.get('/print', wrap(async (req, res) => {
     const list = (arr) => esc(arr.map(R.fmtAddr).join('; '));
     const atts = info.attachments.filter((a) => !a.hidden);
     parts.push(`<article class="msg">
-      <h1>${esc(info.subject || '(sin asunto)')}</h1>
+      <h1>${esc(info.subject || t('file.noSubject'))}</h1>
       <table class="hdr">
-        <tr><th>De:</th><td>${esc(R.fmtAddr(info.from))}${info.onBehalf && info.onBehalf !== info.from.name ? ` (en nombre de ${esc(info.onBehalf)})` : ''}</td></tr>
-        <tr><th>Fecha:</th><td>${esc(fmtDateLong(info.date))}</td></tr>
-        ${info.to.length ? `<tr><th>Para:</th><td>${list(info.to)}</td></tr>` : ''}
-        ${info.cc.length ? `<tr><th>CC:</th><td>${list(info.cc)}</td></tr>` : ''}
-        ${info.bcc.length ? `<tr><th>CCO:</th><td>${list(info.bcc)}</td></tr>` : ''}
-        ${atts.length ? `<tr><th>Adjuntos:</th><td>${atts.map((a) => `${esc(a.name)} <span class="sz">(${Math.max(1, Math.round(a.size / 1024))} KB)</span>`).join('; ')}</td></tr>` : ''}
-        <tr><th>Origen:</th><td class="sz">${esc(info.file.name)}${info.folder ? ' › ' + esc(info.folder.replace(/^\//, '').replace(/\//g, ' › ')) : ''}</td></tr>
+        <tr><th>${t('print.from')}</th><td>${esc(R.fmtAddr(info.from))}${info.onBehalf && info.onBehalf !== info.from.name ? ` (${esc(t('print.onBehalf', { name: info.onBehalf }))})` : ''}</td></tr>
+        <tr><th>${t('print.date')}</th><td>${esc(fmtDateLong(info.date))}</td></tr>
+        ${info.to.length ? `<tr><th>${t('print.to')}</th><td>${list(info.to)}</td></tr>` : ''}
+        ${info.cc.length ? `<tr><th>${t('print.cc')}</th><td>${list(info.cc)}</td></tr>` : ''}
+        ${info.bcc.length ? `<tr><th>${t('print.bcc')}</th><td>${list(info.bcc)}</td></tr>` : ''}
+        ${atts.length ? `<tr><th>${t('print.atts')}</th><td>${atts.map((a) => `${esc(a.name)} <span class="sz">(${Math.max(1, Math.round(a.size / 1024))} KB)</span>`).join('; ')}</td></tr>` : ''}
+        <tr><th>${t('print.source')}</th><td class="sz">${esc(info.file.name)}${info.folder ? ' › ' + esc(info.folder.replace(/^\//, '').replace(/\//g, ' › ')) : ''}</td></tr>
       </table>
       <div class="body"><template shadowrootmode="open"><style>${BODY_STYLE} body,:host{display:block;padding:0}</style>${bodyHtml(ref, { forPrint: true })}</template></div>
     </article>`);
   }
-  const title = refs.length > 1 ? `${parts.length} correos` : 'Correo';
+  const title = t('print.title', { n: refs.length > 1 ? parts.length : 1 });
   res.setHeader('Content-Security-Policy', csp(images, nonce));
-  res.type('text/html; charset=utf-8').send(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${esc(title)}</title>
+  res.type('text/html; charset=utf-8').send(`<!doctype html><html lang="${I.getLang()}"><head><meta charset="utf-8"><title>${esc(title)}</title>
 <style>
   body{font:13px/1.45 "Segoe UI",Arial,sans-serif;color:#111;margin:0;padding:24px;background:#fff}
   .bar{position:sticky;top:0;background:#f6f8fa;border:1px solid #d0d7de;border-radius:8px;padding:8px 12px;margin-bottom:18px;display:flex;gap:10px;align-items:center}
@@ -911,13 +930,13 @@ app.get('/print', wrap(async (req, res) => {
   .msg:last-child{page-break-after:auto;break-after:auto}
   h1{font-size:18px;margin:0 0 8px}
   .hdr{border-collapse:collapse;margin-bottom:12px;width:100%;border-bottom:2px solid #111}
-  .hdr th{text-align:left;vertical-align:top;width:80px;padding:2px 8px 2px 0;color:#444;font-weight:600}
+  .hdr th{text-align:left;vertical-align:top;width:100px;padding:2px 8px 2px 0;color:#444;font-weight:600}
   .hdr td{padding:2px 0;word-break:break-word}
   .sz{color:#666}
   @media print{body{padding:0}.bar{display:none}}
 </style></head><body>
-<div class="bar"><button id="p">Imprimir / Guardar PDF</button><span>${esc(title)}${images ? '' : ' · imágenes remotas bloqueadas'}</span></div>
-${parts.join('\n') || '<p>No hay correos para imprimir.</p>'}
+<div class="bar"><button id="p">${esc(t('print.button'))}</button><span>${esc(title)}${images ? '' : ` · ${esc(t('print.remoteBlocked'))}`}</span></div>
+${parts.join('\n') || `<p>${esc(t('print.none'))}</p>`}
 <script nonce="${nonce}">
   document.getElementById('p').onclick = () => print();
   ${req.query.auto === '1' ? "window.addEventListener('load', () => setTimeout(() => print(), 300));" : ''}
@@ -932,7 +951,7 @@ function addInitialFiles(paths) {
   const list = paths.filter((a) => /\.(pst|ost)$/i.test(a));
   if (!list.length) return null;
   const r = lib.add(list);
-  for (const sk of r.skipped) if (!/ya está/.test(sk.reason)) console.error(`${sk.path}: ${sk.reason}`);
+  for (const sk of r.skipped) if (sk.reason !== t('add.already')) console.error(`${sk.path}: ${sk.reason}`);
   if (r.added.length) libraryChanged();
   return r;
 }
@@ -975,6 +994,8 @@ if (DESKTOP) {
       lib.paused = !!m.paused;
       lib.save();
       if (lib.paused) stopJob(); else schedule();
+    } else if (m.type === 'lang') {
+      try { setLanguage(m.lang); } catch { /* idioma desconocido */ }
     } else if (m.type === 'add') {
       addInitialFiles(m.paths || []);
     } else if (m.type === 'shutdown') {

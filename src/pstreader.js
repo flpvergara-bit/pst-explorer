@@ -6,6 +6,7 @@ const { deEncapsulateSync } = require('rtf-stream-parser');
 const { PSTFile } = require('pst-extractor');
 const { PSTUtil } = require('pst-extractor/dist/PSTUtil.class');
 require('./pstcache').install();
+const { t } = require('./i18n');
 
 const ATTACH_EMBEDDED = 5;
 const MAX_RECIPIENTS = 5000; // envíos masivos: más allá de esto no aporta
@@ -57,7 +58,7 @@ class NotFound extends Error {
 // ref: "123" (id de nodo) o "123.0.2" (mensajes adjuntos dentro de mensajes)
 function parseRef(ref) {
   const parts = String(ref).split('.').map(Number);
-  if (!parts.length || parts.some((n) => !Number.isSafeInteger(n) || n < 0)) throw new NotFound('Referencia inválida');
+  if (!parts.length || parts.some((n) => !Number.isSafeInteger(n) || n < 0)) throw new NotFound(t('err.badRef'));
   return parts;
 }
 
@@ -67,15 +68,15 @@ function loadMessage(pst, ref) {
   try {
     msg = loadObject(pst, parts[0]);
   } catch {
-    throw new NotFound('Mensaje no encontrado');
+    throw new NotFound(t('err.msgNotFound'));
   }
   for (const idx of parts.slice(1)) {
-    if (idx >= safe(() => msg.numberOfAttachments, 0)) throw new NotFound('Adjunto no encontrado');
+    if (idx >= safe(() => msg.numberOfAttachments, 0)) throw new NotFound(t('err.attNotFound'));
     const emb = safe(() => msg.getAttachment(idx).embeddedPSTMessage, null);
-    if (!emb) throw new NotFound('El adjunto no es un mensaje');
+    if (!emb) throw new NotFound(t('err.attNotMsg'));
     msg = emb;
   }
-  if (!msg || typeof msg.subject === 'undefined') throw new NotFound('El elemento no es un mensaje');
+  if (!msg || typeof msg.subject === 'undefined') throw new NotFound(t('err.notMsg'));
   return msg;
 }
 

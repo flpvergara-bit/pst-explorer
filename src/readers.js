@@ -7,6 +7,7 @@ const fs = require('fs');
 const { PSTFile } = require('pst-extractor');
 const { NodeMap } = require('pst-extractor/dist/NodeMap.class');
 const R = require('./pstreader');
+const { t } = require('./i18n');
 
 class Readers {
   constructor(lib) {
@@ -18,17 +19,17 @@ class Readers {
 
   pst(fid) {
     const f = this.lib.byId(fid);
-    if (!f) throw Object.assign(new Error('El archivo ya no está en la biblioteca'), { status: 404 });
+    if (!f) throw Object.assign(new Error(t('err.notInLibrary')), { status: 404 });
     let p = this.open.get(f.id);
     if (!p) {
       if (!this.lib.exists(f)) {
-        throw Object.assign(new Error(`El archivo no está disponible: ${f.path}. Si está en un disco externo, conéctalo (o vuelve a agregarlo desde su nueva ubicación).`), { status: 410 });
+        throw Object.assign(new Error(t('err.unavailable', { path: f.path })), { status: 410 });
       }
       PSTFile.nodeMap = new NodeMap();
       try {
         p = R.openPst(f.path);
       } catch (e) {
-        const msg = /EBUSY|EPERM|EACCES/.test(e.code || e.message) ? 'El archivo está bloqueado (¿Outlook lo tiene abierto?)' : e.message;
+        const msg = /EBUSY|EPERM|EACCES/.test(e.code || e.message) ? t('err.locked') : e.message;
         throw Object.assign(new Error(msg), { status: 409 });
       }
       this.open.set(f.id, p);
@@ -46,7 +47,7 @@ class Readers {
   // ref: "fid-nid[.idx...]"
   message(ref) {
     const m = /^(\d+)-(\d+(?:\.\d+)*)$/.exec(String(ref));
-    if (!m) throw new R.NotFound('Referencia inválida');
+    if (!m) throw new R.NotFound(t('err.badRef'));
     const fid = Number(m[1]);
     const pst = this.pst(fid); // también deja activo el mapa de este archivo
     let msg = this.cache.get(ref);

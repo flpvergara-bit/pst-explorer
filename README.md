@@ -20,6 +20,7 @@ El instalador todavía no está firmado digitalmente, así que la primera vez Wi
 - **Actualizaciones automáticas.** Las versiones nuevas se descargan solas y se instalan al reiniciar la app; nunca a mitad de un indexado.
 - Clic derecho en un `.pst` → **Abrir con → PST Explorer** lo agrega a la biblioteca. La asociación predeterminada con Outlook no se toca.
 - Los índices se guardan en `%APPDATA%\PST Explorer\data`, se conservan al actualizar o reinstalar, y se pueden abrir desde *Archivo → Abrir carpeta de datos*.
+- **Idioma: inglés (predeterminado) o español.** Se cambia con el selector de la barra superior o en *View → Language* / *Ver → Idioma*. La elección se guarda junto a la biblioteca y también se aplica a menús, impresión, exportaciones y nombres de archivo. En la búsqueda funcionan los prefijos en ambos idiomas (`from:`/`de:`, `to:`/`para:`, `subject:`/`asunto:`, `body:`/`cuerpo:`, `attachment:`/`adjunto:`, `content:`/`contenido:`).
 
 **Si ya usabas la versión web**, la app detecta tu biblioteca anterior la primera vez que se abre. La **copia y la verifica** (comprueba que cada archivo copiado sea idéntico y la integridad de cada índice), así que no hay que volver a indexar. La carpeta original queda intacta hasta que la borres desde **Biblioteca**. Cierra la versión web antes de importar.
 

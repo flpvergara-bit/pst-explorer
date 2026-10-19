@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const D = require('./db');
+const { t } = require('./i18n');
 
 const MAX_ACTIVE = 10; // límite de bases adjuntas de SQLite
 
@@ -51,8 +52,8 @@ class Library {
     for (let p of paths) {
       p = path.resolve(String(p || '').trim().replace(/^"|"$/g, ''));
       let st;
-      try { st = fs.statSync(p); } catch { skipped.push({ path: p, reason: 'no se encontró el archivo' }); continue; }
-      if (!st.isFile()) { skipped.push({ path: p, reason: 'no es un archivo' }); continue; }
+      try { st = fs.statSync(p); } catch { skipped.push({ path: p, reason: t('add.notFound') }); continue; }
+      if (!st.isFile()) { skipped.push({ path: p, reason: t('add.notFile') }); continue; }
       let key;
       try {
         checkHeader(p);
@@ -68,7 +69,7 @@ class Library {
           same.name = path.basename(p);
           added.push({ ...same, relocated: true });
         } else {
-          skipped.push({ path: p, reason: 'ya está en la biblioteca' });
+          skipped.push({ path: p, reason: t('add.already') });
         }
         continue;
       }
@@ -161,9 +162,9 @@ function checkHeader(p) {
   try {
     const b = Buffer.alloc(4);
     fs.readSync(fd, b, 0, 4, 0);
-    if (b.toString('latin1') !== '!BDN') throw new Error('no es un archivo PST/OST válido');
+    if (b.toString('latin1') !== '!BDN') throw new Error(t('add.notPst'));
   } catch (e) {
-    if (/EBUSY|EPERM|EACCES/.test(e.code || '')) throw new Error('el archivo está bloqueado (¿Outlook lo tiene abierto?)');
+    if (/EBUSY|EPERM|EACCES/.test(e.code || '')) throw new Error(t('add.locked'));
     throw e;
   } finally {
     fs.closeSync(fd);

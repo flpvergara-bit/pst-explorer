@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
+const { t } = require('../src/i18n');
 
 const isLibraryDir = (dir) => {
   try { return fs.statSync(path.join(dir, 'library.json')).isFile() && fs.statSync(path.join(dir, 'index')).isDirectory(); } catch { return false; }
@@ -109,10 +110,10 @@ async function copyAndVerify(src, dest, onProgress = () => {}) {
   let done = 0;
   const hashes = new Map();
   for (const f of files) {
-    onProgress({ phase: 'copy', done, total, text: `Copiando ${f.rel}` });
+    onProgress({ phase: 'copy', done, total, text: f.rel });
     hashes.set(f.rel, await copyFileHashed(path.join(src, f.rel), path.join(tmp, f.rel), (n) => {
       done += n;
-      onProgress({ phase: 'copy', done, total, text: `Copiando ${f.rel}` });
+      onProgress({ phase: 'copy', done, total, text: f.rel });
     }));
   }
   // 1) comprobar que lo escrito es idéntico
@@ -121,16 +122,16 @@ async function copyAndVerify(src, dest, onProgress = () => {}) {
   for (const f of files) {
     const h = await hashFile(path.join(tmp, f.rel), (n) => {
       done += n;
-      onProgress({ phase: 'verify', done, total, text: `Verificando ${f.rel}` });
+      onProgress({ phase: 'verify', done, total, text: f.rel });
     });
-    if (h !== hashes.get(f.rel)) problems.push(`${f.rel}: la copia no es idéntica al original`);
+    if (h !== hashes.get(f.rel)) problems.push(`${f.rel}: ${t('mig.notIdentical')}`);
   }
   // 2) integridad de cada índice y cantidad de correos
   const { DatabaseSync } = require('node:sqlite');
   const lib = JSON.parse(fs.readFileSync(path.join(tmp, 'library.json'), 'utf8'));
   let messages = 0;
   for (const [i, f] of (lib.files || []).entries()) {
-    onProgress({ phase: 'check', done: i, total: lib.files.length, text: `Comprobando el índice de ${f.name}` });
+    onProgress({ phase: 'check', done: i, total: lib.files.length, text: f.name });
     const db = path.join(tmp, 'index', f.key + '.db');
     if (!fs.existsSync(db)) continue; // archivo agregado pero aún sin índice
     try {
@@ -139,8 +140,8 @@ async function copyAndVerify(src, dest, onProgress = () => {}) {
       const meta = Object.fromEntries(d.prepare('SELECT k, v FROM meta').all().map((r) => [r.k, r.v]));
       const n = d.prepare('SELECT COUNT(*) AS n FROM messages').get().n;
       d.close();
-      if (Object.values(ok)[0] !== 'ok') problems.push(`${f.name}: el índice no pasó la comprobación de integridad`);
-      if (meta.complete === '1' && Number(meta.indexed) !== n) problems.push(`${f.name}: se esperaban ${meta.indexed} correos y hay ${n}`);
+      if (Object.values(ok)[0] !== 'ok') problems.push(`${f.name}: ${t('mig.integrity')}`);
+      if (meta.complete === '1' && Number(meta.indexed) !== n) problems.push(`${f.name}: ${t('mig.count', { expected: meta.indexed, found: n })}`);
       messages += n;
     } catch (e) {
       problems.push(`${f.name}: ${e.message}`);

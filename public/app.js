@@ -29,6 +29,34 @@ const LS = {
   set(k, v) { try { localStorage.setItem('pstx.' + k, JSON.stringify(v)); } catch { /* */ } },
 };
 
+// ------------------------------------------------------------------ idioma (textos en i18n.js)
+
+const LOCALES = { en: 'en-US', es: 'es-CL' };
+// el idioma real lo guarda el servidor; aquí se recuerda el último para pintar sin parpadeo
+let LANG = LOCALES[LS.get('lang', 'en')] ? LS.get('lang', 'en') : 'en';
+const LOC = () => LOCALES[LANG];
+const plurals = {};
+function t(key, vars = {}) {
+  const D = window.I18N;
+  let s = D[LANG][key] ?? D.en[key];
+  if (s == null) return key;
+  if (typeof s === 'object') {
+    plurals[LANG] = plurals[LANG] || new Intl.PluralRules(LOC());
+    s = s[plurals[LANG].select(Number(vars.n) || 0)] || s.other;
+  }
+  return s.replace(/\{(\w+)\}/g, (m, k) => (vars[k] === undefined ? m : k === 'n' ? fmtNum(vars[k]) : String(vars[k])));
+}
+// textos fijos de index.html
+function applyI18n(root = document) {
+  document.documentElement.lang = LANG;
+  for (const el of root.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n);
+  for (const el of root.querySelectorAll('[data-i18n-html]')) el.innerHTML = t(el.dataset.i18nHtml);
+  for (const el of root.querySelectorAll('[data-i18n-title]')) el.title = t(el.dataset.i18nTitle);
+  for (const el of root.querySelectorAll('[data-i18n-ph]')) el.placeholder = t(el.dataset.i18nPh);
+  const sel = $('#langSel');
+  if (sel) sel.value = LANG;
+}
+
 // ------------------------------------------------------------------ íconos (SVG, no dependen de fuentes emoji)
 
 const svg = (d) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`;
@@ -53,33 +81,32 @@ const I = {
 
 // ------------------------------------------------------------------ formato
 
-const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-const p2 = (n) => String(n).padStart(2, '0');
 function fmtShort(ms) {
   if (ms == null) return '';
   const d = new Date(ms);
   const now = new Date();
-  if (d.toDateString() === now.toDateString()) return `${p2(d.getHours())}:${p2(d.getMinutes())}`;
-  if (d.getFullYear() === now.getFullYear()) return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
-  return `${p2(d.getDate())}-${p2(d.getMonth() + 1)}-${d.getFullYear()}`;
+  if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString(LOC(), { hour: '2-digit', minute: '2-digit' });
+  if (d.getFullYear() === now.getFullYear()) return d.toLocaleDateString(LOC(), { day: 'numeric', month: 'short' });
+  return d.toLocaleDateString(LOC(), { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 function fmtLong(ms) {
   if (ms == null) return '';
-  return new Date(ms).toLocaleString('es-CL', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return new Date(ms).toLocaleString(LOC(), { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
+const fmtNum = (n) => Number(n || 0).toLocaleString(LOC());
+const fmtDec = (n, d) => Number(n).toLocaleString(LOC(), { minimumFractionDigits: d, maximumFractionDigits: d });
 function fmtSize(b) {
   if (!b) return '0 KB';
-  if (b < 1024 * 1024) return `${Math.max(1, Math.round(b / 1024))} KB`;
-  if (b < 1024 ** 3) return `${(b / 1024 / 1024).toFixed(b < 10 * 1024 * 1024 ? 1 : 0)} MB`;
-  return `${(b / 1024 ** 3).toFixed(1).replace('.', ',')} GB`;
+  if (b < 1024 * 1024) return `${fmtNum(Math.max(1, Math.round(b / 1024)))} KB`;
+  if (b < 1024 ** 3) return `${fmtDec(b / 1024 / 1024, b < 10 * 1024 * 1024 ? 1 : 0)} MB`;
+  return `${fmtDec(b / 1024 ** 3, 1)} GB`;
 }
 function fmtEta(s) {
   if (s == null) return '';
   if (s < 90) return `~${Math.max(1, Math.round(s))} s`;
   if (s < 5400) return `~${Math.round(s / 60)} min`;
-  return `~${(s / 3600).toFixed(1).replace('.', ',')} h`;
+  return `~${fmtDec(s / 3600, 1)} h`;
 }
-const fmtNum = (n) => Number(n || 0).toLocaleString('es-CL');
 const fmtAddr = (a) => (a.email && a.name && a.name !== a.email ? `${a.name} <${a.email}>` : a.name || a.email || '');
 
 function initials(name) {
@@ -159,7 +186,7 @@ const state = {
   lib: null, // último /api/state
   view: 'mail', // mail | threads | attachments
   node: { type: 'all' }, // nodo elegido en el árbol: all | file (id) | folder (ref "f:nid")
-  nodeName: 'Todos los archivos',
+  nodeName: '',
   q: '',
   scope: 'all',
   filters: { ...DEFAULT_FILTERS },
@@ -179,7 +206,7 @@ const fileOfNode = () => (state.node.type === 'file' ? state.node.id : state.nod
 const multiFile = () => (state.tree.files || []).length > 1;
 const fileLabel = (id) => {
   const f = (state.lib && state.lib.files.find((x) => x.id === id)) || (state.tree.files || []).find((x) => x.id === id);
-  return f ? f.name : `archivo ${id}`;
+  return f ? f.name : `#${id}`;
 };
 
 function filterParams({ forExport = false } = {}) {
@@ -240,7 +267,7 @@ const vlist = {
     const params = filterParams();
     params.set('offset', 0);
     params.set('limit', PAGE);
-    if (!keepScroll) $('#listCount').textContent = 'buscando…';
+    if (!keepScroll) $('#listCount').textContent = t('list.searching');
     let data;
     try {
       data = await api(`${this.endpoint()}?${params}`);
@@ -349,35 +376,35 @@ function renderRow(r, i, sel, re) {
   if (state.view === 'attachments') {
     const key = `${r.ref}:${r.idx}`;
     return `<div class="row att${sel ? ' sel' : ''}" data-i="${i}" ${style}>
-      <input type="checkbox" data-key="${esc(key)}" ${state.attSel.has(key) ? 'checked' : ''} title="Seleccionar">
+      <input type="checkbox" data-key="${esc(key)}" ${state.attSel.has(key) ? 'checked' : ''} title="${esc(t('att.select'))}">
       ${fileIco(r.ext)}
       <div class="att-info">
         <div class="an" title="${esc(r.name)}">${hl(r.name, re)}</div>
         <div class="am">${fmtSize(r.size)} · ${esc(fmtShort(r.date))} · ${esc(r.sender_name || '')} ${fileTag(r.src)}</div>
-        <div class="am">${hl(r.subject || '(sin asunto)', re)}</div>
+        <div class="am">${hl(r.subject || t('row.noSubject'), re)}</div>
       </div></div>`;
   }
   if (state.view === 'threads') {
     return `<div class="row${sel ? ' sel' : ''}${r.is_read === 0 ? ' unread' : ''}" data-i="${i}" ${style}>
       <div class="l1"><span class="who">${hl(r.senders ? r.senders.split(',').slice(0, 4).join(', ') : r.sender_name, re)}</span><span class="when">${esc(fmtShort(r.date))}</span></div>
-      <div class="l2"><span class="subj">${hl(r.subject || '(sin asunto)', re)}</span>
-        <span class="flags">${r.att_count ? I.clip : ''}<span class="badge${state.q ? ' hit' : ''}" title="Correos en la conversación${state.q ? ' (coincidencias / total)' : ''}">${state.q && r.conv_n && r.hits !== r.conv_n ? `${r.hits}/` : ''}${r.conv_n || r.hits}</span></span></div>
+      <div class="l2"><span class="subj">${hl(r.subject || t('row.noSubject'), re)}</span>
+        <span class="flags">${r.att_count ? I.clip : ''}<span class="badge${state.q ? ' hit' : ''}" title="${t(state.q ? 'row.convHitsTitle' : 'row.convTitle')}">${state.q && r.conv_n && r.hits !== r.conv_n ? `${r.hits}/` : ''}${r.conv_n || r.hits}</span></span></div>
       <div class="snip">${hl(r.snippet, re)}</div></div>`;
   }
   const cls = r.msg_class || '';
   const kind = /^IPM\.(Appointment|Schedule)/i.test(cls) ? I.cal : /^IPM\.Contact/i.test(cls) ? I.user : /^IPM\.Task/i.test(cls) ? I.task : /^IPM\.StickyNote/i.test(cls) ? I.note : '';
   return `<div class="row${sel ? ' sel' : ''}${r.is_read === 0 ? ' unread' : ''}" data-i="${i}" ${style}>
-    <div class="l1"><span class="who" title="${esc(r.sender_email || '')}">${hl(r.sender_name || r.sender_email || '(sin remitente)', re)}</span>${fileTag(r.src)}<span class="when">${esc(fmtShort(r.date))}</span></div>
-    <div class="l2"><span class="subj">${kind}${hl(r.subject || '(sin asunto)', re)}</span>
-      <span class="flags">${r.importance === 2 ? '<span class="imp" title="Importancia alta">!</span>' : ''}${r.hit_src === 1 ? '<span class="badge hit" title="La coincidencia está dentro de un adjunto">en adjunto</span>' : ''}${r.att_count ? `<span title="${r.att_count} adjunto(s)">${I.clip}</span>` : ''}${r.conv_n > 1 ? `<span class="badge" data-thread="${esc(r.conv_key)}" title="Ver conversación (${r.conv_n} correos)">${I.chat} ${r.conv_n}</span>` : ''}</span></div>
+    <div class="l1"><span class="who" title="${esc(r.sender_email || '')}">${hl(r.sender_name || r.sender_email || t('row.noSender'), re)}</span>${fileTag(r.src)}<span class="when">${esc(fmtShort(r.date))}</span></div>
+    <div class="l2"><span class="subj">${kind}${hl(r.subject || t('row.noSubject'), re)}</span>
+      <span class="flags">${r.importance === 2 ? `<span class="imp" title="${t('row.highImportance')}">!</span>` : ''}${r.hit_src === 1 ? `<span class="badge hit" title="${t('row.inAttTitle')}">${t('row.inAtt')}</span>` : ''}${r.att_count ? `<span title="${t('row.attCount', { n: r.att_count })}">${I.clip}</span>` : ''}${r.conv_n > 1 ? `<span class="badge" data-thread="${esc(r.conv_key)}" title="${t('row.viewConv', { n: r.conv_n })}">${I.chat} ${r.conv_n}</span>` : ''}</span></div>
     <div class="snip">${hl(r.snippet, re)}</div></div>`;
 }
 
 function emptyText() {
-  if (!state.lib || !state.lib.files.length) return 'La biblioteca está vacía. Agrega tus archivos PST con el botón «Biblioteca».';
-  if (state.q) return `Sin resultados para «${state.q}». Prueba con menos palabras, quita filtros o busca en «Todos los archivos».`;
-  if (state.lib.indexing) return 'Todavía se está indexando; los correos aparecerán a medida que avance.';
-  return 'No hay elementos aquí.';
+  if (!state.lib || !state.lib.files.length) return t('list.emptyLib');
+  if (state.q) return t('list.noResults', { q: state.q });
+  if (state.lib.indexing) return t('list.stillIndexing');
+  return t('list.empty');
 }
 function showEmpty(text) {
   const e = $('#listEmpty');
@@ -389,16 +416,20 @@ function updateListHeader() {
   let title;
   if (state.q) {
     const sc = state.scope;
-    title = sc === 'all' || state.node.type === 'all' ? 'Resultados en todos los archivos'
-      : sc === 'file' ? `Resultados en ${fileLabel(fileOfNode())}` : `Resultados en ${state.nodeName}`;
+    title = sc === 'all' || state.node.type === 'all' ? t('list.resultsAll')
+      : t('list.resultsIn', { name: sc === 'file' ? fileLabel(fileOfNode()) : state.nodeName });
   } else {
     title = state.nodeName;
   }
-  if (state.view === 'threads') title = 'Conversaciones · ' + title;
-  if (state.view === 'attachments') title = 'Adjuntos · ' + title;
+  if (state.view === 'threads') title = t('list.threadsPrefix', { title });
+  if (state.view === 'attachments') title = t('list.attPrefix', { title });
   $('#listTitle').textContent = title;
-  const unit = state.view === 'threads' ? 'conversaciones' : state.view === 'attachments' ? 'archivos' : 'elementos';
-  $('#listCount').textContent = vlist.total != null ? `${vlist.capped ? 'más de ' : ''}${fmtNum(vlist.total)} ${unit}` : '';
+  let count = '';
+  if (vlist.total != null) {
+    count = t(`list.count.${state.view}`, { n: vlist.total });
+    if (vlist.capped) count = t('list.more', { count });
+  }
+  $('#listCount').textContent = count;
 }
 
 vlist.el.addEventListener('scroll', () => {
@@ -462,23 +493,34 @@ async function loadTree() {
   renderTree();
 }
 
-const FOLDER_ES = {
-  'Inbox': 'Bandeja de entrada', 'Sent Items': 'Elementos enviados', 'Deleted Items': 'Elementos eliminados', 'Drafts': 'Borradores',
-  'Outbox': 'Bandeja de salida', 'Junk Email': 'Correo no deseado', 'Junk E-mail': 'Correo no deseado', 'Calendar': 'Calendario',
-  'Contacts': 'Contactos', 'Tasks': 'Tareas', 'Notes': 'Notas', 'Journal': 'Diario', 'Archive': 'Archivo',
-  'Top of Personal Folders': 'Carpetas personales', 'Top of Outlook data file': 'Archivo de datos de Outlook',
+// carpetas estándar de Outlook con el nombre en el idioma de la interfaz (el PST puede venir en otro)
+const FOLDERS = {
+  es: {
+    'Inbox': 'Bandeja de entrada', 'Sent Items': 'Elementos enviados', 'Deleted Items': 'Elementos eliminados', 'Drafts': 'Borradores',
+    'Outbox': 'Bandeja de salida', 'Junk Email': 'Correo no deseado', 'Junk E-mail': 'Correo no deseado', 'Calendar': 'Calendario',
+    'Contacts': 'Contactos', 'Tasks': 'Tareas', 'Notes': 'Notas', 'Journal': 'Diario', 'Archive': 'Archivo',
+    'Top of Personal Folders': 'Carpetas personales', 'Top of Outlook data file': 'Archivo de datos de Outlook',
+  },
+  en: {
+    'Bandeja de entrada': 'Inbox', 'Elementos enviados': 'Sent Items', 'Elementos eliminados': 'Deleted Items', 'Borradores': 'Drafts',
+    'Bandeja de salida': 'Outbox', 'Correo no deseado': 'Junk Email', 'Calendario': 'Calendar', 'Contactos': 'Contacts',
+    'Tareas': 'Tasks', 'Notas': 'Notes', 'Diario': 'Journal', 'Archivo': 'Archive', 'Carpetas personales': 'Personal Folders',
+    'Top of Personal Folders': 'Personal Folders', 'Top of Outlook data file': 'Outlook data file',
+    'Principio de Carpetas personales': 'Personal Folders', 'Principio del archivo de datos de Outlook': 'Outlook data file',
+  },
 };
-const folderLabel = (f) => FOLDER_ES[f.name] || f.name;
+const folderName = (n) => FOLDERS[LANG][n] || n;
+const folderLabel = (f) => folderName(f.name);
 
 function fileStateLabel(fid) {
   const f = state.lib && state.lib.files.find((x) => x.id === fid);
   if (!f) return '';
-  if (!f.exists) return '<span class="tstate warn" title="El archivo no está disponible (¿disco desconectado?). Se puede buscar en su índice.">sin acceso</span>';
+  if (!f.exists) return `<span class="tstate warn" title="${esc(t('tree.noAccessTitle'))}">${t('tree.noAccess')}</span>`;
   if (f.job) {
     const pct = f.job.phase === 'messages' ? (f.job.total ? (f.job.done / f.job.total) * 100 : 0) : (f.job.attTotal ? (f.job.attDone / f.job.attTotal) * 100 : 0);
-    return `<span class="tstate busy">${f.job.phase === 'messages' ? '' : 'adj. '}${pct.toFixed(0)}%</span>`;
+    return `<span class="tstate busy">${f.job.phase === 'messages' ? '' : t('tree.att') + ' '}${pct.toFixed(0)}%</span>`;
   }
-  if (!f.status.complete) return '<span class="tstate">en cola</span>';
+  if (!f.status.complete) return `<span class="tstate">${t('tree.queued')}</span>`;
   return '';
 }
 
@@ -500,7 +542,7 @@ function renderTree() {
   };
   const totalAll = files.reduce((s, f) => s + (f.indexed || 0), 0);
   const isSel = (t, id) => state.node.type === t && (id == null || state.node.id === id);
-  let html = `<div class="tnode${isSel('all') ? ' sel' : ''}" data-node="all" style="padding-left:4px"><span class="tw">${I.all}</span><span class="tn"><b>Todos los archivos</b></span><span class="tc">${fmtNum(totalAll)}</span></div>`;
+  let html = `<div class="tnode${isSel('all') ? ' sel' : ''}" data-node="all" style="padding-left:4px"><span class="tw">${I.all}</span><span class="tn"><b>${t('tree.all')}</b></span><span class="tc">${fmtNum(totalAll)}</span></div>`;
   const draw = (parentId, depth) => {
     for (const f of byParent.get(parentId) || []) {
       if (hideEmpty && subtotal(f) === 0) continue;
@@ -540,11 +582,11 @@ $('#tree').addEventListener('click', (e) => {
   }
   const n = e.target.closest('.tnode');
   if (!n) return;
-  const t = n.dataset.node;
-  if (t === 'all') {
+  const type = n.dataset.node;
+  if (type === 'all') {
     state.node = { type: 'all' };
-    state.nodeName = 'Todos los archivos';
-  } else if (t === 'file') {
+    state.nodeName = t('tree.all');
+  } else if (type === 'file') {
     state.node = { type: 'file', id: Number(n.dataset.id) };
     state.nodeName = fileLabel(state.node.id);
   } else {
@@ -553,7 +595,7 @@ $('#tree').addEventListener('click', (e) => {
     state.nodeName = f ? `${folderLabel(f)} (${fileLabel(f.file).replace(/\.(pst|ost)$/i, '')})` : '';
   }
   // al elegir un archivo o carpeta mientras se busca, acotar la búsqueda ahí
-  if (state.q && state.scope === 'all' && t !== 'all') $('#scope').value = state.scope = t === 'file' ? 'file' : 'folder';
+  if (state.q && state.scope === 'all' && type !== 'all') $('#scope').value = state.scope = type === 'file' ? 'file' : 'folder';
   renderTree();
   state.selected = null;
   vlist.load();
@@ -567,17 +609,18 @@ function setView(v) {
   state.view = v;
   $$('.view').forEach((b) => b.classList.toggle('active', b.dataset.view === v));
   $('#attBar').hidden = v !== 'attachments';
-  const sortSel = $('#sort');
-  if (v === 'attachments') {
-    sortSel.innerHTML = '<option value="date">Fecha</option><option value="name">Nombre</option><option value="size">Tamaño</option><option value="ext">Tipo</option>';
-  } else {
-    sortSel.innerHTML = '<option value="date">Fecha</option><option value="relevance">Relevancia</option><option value="sender">Remitente</option><option value="subject">Asunto</option><option value="size">Tamaño</option><option value="att">Adjuntos</option>';
-    for (const o of sortSel.options) o.hidden = v === 'threads' && !['date', 'relevance'].includes(o.value);
-  }
-  if (![...sortSel.options].some((o) => o.value === state.sort && !o.hidden)) state.sort = 'date';
-  sortSel.value = state.sort;
+  renderSortOptions();
   state.selected = null;
   vlist.load();
+}
+function renderSortOptions() {
+  const v = state.view;
+  const sortSel = $('#sort');
+  const keys = v === 'attachments' ? ['date', 'name', 'size', 'ext'] : ['date', 'relevance', 'sender', 'subject', 'size', 'att'];
+  sortSel.innerHTML = keys.map((k) => `<option value="${k}">${esc(t('sort.' + k))}</option>`).join('');
+  if (v === 'threads') for (const o of sortSel.options) o.hidden = !['date', 'relevance'].includes(o.value);
+  if (![...sortSel.options].some((o) => o.value === state.sort && !o.hidden)) state.sort = 'date';
+  sortSel.value = state.sort;
 }
 $('#sort').addEventListener('change', (e) => { state.sort = e.target.value; state.sortTouched = true; vlist.load(); });
 $('#dir').addEventListener('click', () => {
@@ -619,16 +662,16 @@ function setQuery(q) {
 function renderChips() {
   const f = state.filters;
   const chips = [];
-  if (f.dateFrom) chips.push(['dateFrom', `Desde ${f.dateFrom}`]);
-  if (f.dateTo) chips.push(['dateTo', `Hasta ${f.dateTo}`]);
-  if (f.att) chips.push(['att', 'Con adjuntos']);
-  if (f.unread) chips.push(['unread', 'No leídos']);
-  if (f.mail) chips.push(['mail', 'Solo correos']);
-  if (f.attext) chips.push(['attext', `Adjunto: ${$(`#advForm [name=attext] option[value="${f.attext}"]`)?.textContent || f.attext}`]);
-  if (!f.inatt) chips.push(['inatt', 'Sin buscar en adjuntos']);
-  if (f.dups) chips.push(['dups', 'Con copias repetidas']);
-  if (f.only === 'unique') chips.push(['only', 'Solo los que no están en otros archivos']);
-  $('#chips').innerHTML = chips.map(([k, t]) => `<span class="chip">${esc(t)}<button data-k="${k}" title="Quitar">✕</button></span>`).join('');
+  if (f.dateFrom) chips.push(['dateFrom', t('chip.dateFrom', { v: f.dateFrom })]);
+  if (f.dateTo) chips.push(['dateTo', t('chip.dateTo', { v: f.dateTo })]);
+  if (f.att) chips.push(['att', t('chip.att')]);
+  if (f.unread) chips.push(['unread', t('chip.unread')]);
+  if (f.mail) chips.push(['mail', t('chip.mail')]);
+  if (f.attext) chips.push(['attext', t('chip.attext', { v: $(`#advForm [name=attext] option[value="${f.attext}"]`)?.textContent || f.attext })]);
+  if (!f.inatt) chips.push(['inatt', t('chip.noInatt')]);
+  if (f.dups) chips.push(['dups', t('chip.dups')]);
+  if (f.only === 'unique') chips.push(['only', t('chip.unique')]);
+  $('#chips').innerHTML = chips.map(([k, text]) => `<span class="chip">${esc(text)}<button data-k="${k}" title="${esc(t('chip.remove'))}">✕</button></span>`).join('');
   $('#btnAdv').classList.toggle('on', chips.length > 0);
 }
 $('#chips').addEventListener('click', (e) => {
@@ -665,8 +708,8 @@ $('#advForm').addEventListener('submit', (e) => {
     for (const w of v.match(/"[^"]+"|\S+/g) || []) parts.push(`${prefix}${w.startsWith('"') ? w : quoteIf(w)}`);
     fm[name].value = '';
   };
-  field('de', 'de:'); field('para', 'para:'); field('asunto', 'asunto:'); field('cuerpo', 'cuerpo:');
-  field('adjunto', 'adjunto:'); field('contenido', 'contenido:'); field('sin', '-');
+  field('de', t('field.from')); field('para', t('field.to')); field('asunto', t('field.subject')); field('cuerpo', t('field.body'));
+  field('adjunto', t('field.attachment')); field('contenido', t('field.content')); field('sin', '-');
   Object.assign(state.filters, {
     dateFrom: fm.dateFrom.value, dateTo: fm.dateTo.value, attext: fm.attext.value,
     att: fm.att.checked, unread: fm.unread.checked, mail: fm.mail.checked, inatt: fm.inatt.checked, dups: fm.dups.checked,
@@ -708,11 +751,11 @@ $('#attName').addEventListener('input', (e) => {
 });
 function updateAttSel() {
   const n = state.attSel.size;
-  $('#attSelCount').textContent = n ? `${n} seleccionado(s)` : 'Marca archivos para descargarlos juntos';
+  $('#attSelCount').textContent = n ? t('att.selCount', { n }) : t('att.selHint');
   $('#attSelZip').disabled = !n;
 }
 $('#attSelZip').addEventListener('click', () => {
-  download(`/api/export/attachments.zip?pairs=${enc([...state.attSel].join(','))}&flat=1&name=${enc('Adjuntos seleccionados')}`);
+  download(`/api/export/attachments.zip?pairs=${enc([...state.attSel].join(','))}&flat=1&name=${enc(t('att.selected'))}`);
 });
 
 // ------------------------------------------------------------------ lector
@@ -730,7 +773,7 @@ function makeFrame(ref, onMarks) {
   fr.className = 'body-frame';
   fr.setAttribute('sandbox', 'allow-same-origin allow-popups allow-popups-to-escape-sandbox');
   fr.setAttribute('referrerpolicy', 'no-referrer');
-  fr.title = 'Contenido del correo';
+  fr.title = t('reader.frameTitle');
   const fit = () => {
     try {
       const d = fr.contentDocument;
@@ -757,7 +800,7 @@ function makeFrame(ref, onMarks) {
 function recipLine(label, list, limit = 6) {
   if (!list || !list.length) return '';
   const shown = list.slice(0, limit).map((a) => `<span title="${esc(a.email || '')}">${esc(a.name || a.email)}</span>`).join('; ');
-  const more = list.length > limit ? ` <span class="more-rc" data-all="${esc(list.slice(0, 3000).map(fmtAddr).join('; '))}">y ${fmtNum(list.length - limit)} más</span>` : '';
+  const more = list.length > limit ? ` <span class="more-rc" data-all="${esc(list.slice(0, 3000).map(fmtAddr).join('; '))}">${t('reader.andMore', { n: list.length - limit })}</span>` : '';
   return `<div class="ln"><b>${label}</b> ${shown}${more}</div>`;
 }
 
@@ -770,30 +813,30 @@ function attChips(info) {
     const canView = !off && (/^image\/(png|jpe?g|gif|bmp|webp)$/.test(a.mime) || a.mime === 'application/pdf' || a.mime === 'text/plain');
     return `<div class="attc" data-idx="${a.idx}" title="${esc(a.name)}">
       ${fileIco(a.ext)}
-      <div class="ai" ${off ? '' : `data-dl="${base}${a.idx}"`}><div>${hl(a.name, termRegex(state.terms))}</div><div>${fmtSize(a.size)}${a.embedded ? ' · correo adjunto' : ''}${a.byReference ? ' · vínculo' : ''}</div></div>
+      <div class="ai" ${off ? '' : `data-dl="${base}${a.idx}"`}><div>${hl(a.name, termRegex(state.terms))}</div><div>${fmtSize(a.size)}${a.embedded ? ' · ' + t('reader.attachedEmail') : ''}${a.byReference ? ' · ' + t('reader.link') : ''}</div></div>
       <div class="ab">
-        ${a.embedded && !off ? `<button data-openemb="${a.idx}" title="Abrir el correo adjunto">Abrir</button>` : ''}
-        ${canView ? `<button data-view="${base}${a.idx}?inline=1" title="Ver en el navegador">${I.eye}</button>` : ''}
-        ${off ? '' : `<button data-dl="${base}${a.idx}" title="Descargar">${I.down}</button>`}
+        ${a.embedded && !off ? `<button data-openemb="${a.idx}" title="${t('reader.openAttached')}">${t('reader.open')}</button>` : ''}
+        ${canView ? `<button data-view="${base}${a.idx}?inline=1" title="${t('reader.viewInBrowser')}">${I.eye}</button>` : ''}
+        ${off ? '' : `<button data-dl="${base}${a.idx}" title="${t('reader.download')}">${I.down}</button>`}
       </div></div>`;
   }).join('')}</div>`;
 }
 
-const folderPretty = (p) => (p || '').replace(/^\//, '').split('/').map((n) => FOLDER_ES[n] || n).join(' › ');
+const folderPretty = (p) => (p || '').replace(/^\//, '').split('/').map(folderName).join(' › ');
 
 function msgHeaderHtml(info) {
   return `
     <div class="from-line">
       <div class="avatar" style="background:${colorFor(info.from.email || info.from.name)}">${esc(initials(info.from.name || info.from.email))}</div>
       <div class="hdr-lines">
-        <div><span class="fn">${esc(info.from.name || '(sin remitente)')}</span> ${info.from.email && info.from.email !== info.from.name ? `<span class="fe">&lt;${esc(info.from.email)}&gt;</span>` : ''}
-          ${info.onBehalf && info.onBehalf !== info.from.name ? `<span class="muted"> en nombre de ${esc(info.onBehalf)}</span>` : ''}</div>
-        ${recipLine('Para:', info.to)}${recipLine('CC:', info.cc)}${recipLine('CCO:', info.bcc)}
-        ${info.location ? `<div class="ln"><b>Lugar:</b> ${esc(info.location)}</div>` : ''}
-        <div class="ln"><b>Ubicación:</b> ${I.db} ${esc(info.file.name)}${info.folder ? ' › ' + esc(folderPretty(info.folder)) : ''}</div>
-        ${info.alsoIn && info.alsoIn.length ? `<div class="ln" title="El mismo correo está guardado también en estos respaldos">${I.copy} <b>También en:</b> ${info.alsoIn.map((x) => esc(x.name)).join(', ')}</div>` : ''}
+        <div><span class="fn">${esc(info.from.name || t('row.noSender'))}</span> ${info.from.email && info.from.email !== info.from.name ? `<span class="fe">&lt;${esc(info.from.email)}&gt;</span>` : ''}
+          ${info.onBehalf && info.onBehalf !== info.from.name ? `<span class="muted"> ${esc(t('reader.onBehalf', { name: info.onBehalf }))}</span>` : ''}</div>
+        ${recipLine(t('reader.to'), info.to)}${recipLine(t('reader.cc'), info.cc)}${recipLine(t('reader.bcc'), info.bcc)}
+        ${info.location ? `<div class="ln"><b>${t('reader.location')}</b> ${esc(info.location)}</div>` : ''}
+        <div class="ln"><b>${t('reader.source')}</b> ${I.db} ${esc(info.file.name)}${info.folder ? ' › ' + esc(folderPretty(info.folder)) : ''}</div>
+        ${info.alsoIn && info.alsoIn.length ? `<div class="ln" title="${t('reader.alsoInTitle')}">${I.copy} <b>${t('reader.alsoIn')}</b> ${info.alsoIn.map((x) => esc(x.name)).join(', ')}</div>` : ''}
       </div>
-      <div class="hdr-date">${esc(fmtLong(info.date))}${info.importance === 2 ? '<br><span class="imp">Importancia alta</span>' : ''}<br>${fmtSize(info.size)}</div>
+      <div class="hdr-date">${esc(fmtLong(info.date))}${info.importance === 2 ? `<br><span class="imp">${t('reader.highImportance')}</span>` : ''}<br>${fmtSize(info.size)}</div>
     </div>`;
 }
 
@@ -824,23 +867,23 @@ async function openMessage(ref, ctx = {}) {
   const off = !!info.unavailable;
   reader.innerHTML = `<div class="msg-view">
     <div class="msg-actions">
-      ${crumbs.length ? '<button class="btn small" data-act="back">← Volver</button>' : ''}
-      ${info.convCount > 1 && !info.embedded ? `<button class="btn small" data-act="thread">${I.chat} Ver conversación (${info.convCount})</button>` : ''}
-      ${off ? '' : `<button class="btn small" data-act="print" title="Imprimir o guardar como PDF">${I.print} Imprimir</button>
-      <button class="btn small" data-act="eml" title="Descargar el correo completo (.eml, se abre con Outlook)">${I.down} .eml</button>
-      ${info.attachments.some((a) => !a.hidden) ? `<button class="btn small" data-act="attzip">${I.clip} Adjuntos (ZIP)</button>` : ''}
-      ${info.hasHeaders ? '<button class="btn small" data-act="headers">Encabezados</button>' : ''}`}
+      ${crumbs.length ? `<button class="btn small" data-act="back">${t('reader.back')}</button>` : ''}
+      ${info.convCount > 1 && !info.embedded ? `<button class="btn small" data-act="thread">${I.chat} ${t('reader.viewConv', { n: info.convCount })}</button>` : ''}
+      ${off ? '' : `<button class="btn small" data-act="print" title="${t('reader.printTitle')}">${I.print} ${t('reader.print')}</button>
+      <button class="btn small" data-act="eml" title="${t('reader.emlTitle')}">${I.down} .eml</button>
+      ${info.attachments.some((a) => !a.hidden) ? `<button class="btn small" data-act="attzip">${I.clip} ${t('reader.attZip')}</button>` : ''}
+      ${info.hasHeaders ? `<button class="btn small" data-act="headers">${t('reader.headers')}</button>` : ''}`}
       <span class="sp"></span>
-      <span class="hitnav" hidden><span class="hitc"></span><button class="btn ghost icon small" data-act="prev" title="Anterior">▲</button><button class="btn ghost icon small" data-act="next" title="Siguiente">▼</button></span>
+      <span class="hitnav" hidden><span class="hitc"></span><button class="btn ghost icon small" data-act="prev" title="${t('reader.prev')}">▲</button><button class="btn ghost icon small" data-act="next" title="${t('reader.next')}">▼</button></span>
     </div>
     <div class="msg-head">
-      ${crumbs.length ? `<div class="crumb">Correo adjunto dentro de: ${crumbs.map((c, i) => `<a data-crumb="${i}">${esc(c.subject || '(sin asunto)')}</a>`).join(' › ')}</div>` : ''}
-      <h2>${hl(info.subject || '(sin asunto)', termRegex(state.terms))}</h2>
+      ${crumbs.length ? `<div class="crumb">${t('reader.crumb')} ${crumbs.map((c, i) => `<a data-crumb="${i}">${esc(c.subject || t('row.noSubject'))}</a>`).join(' › ')}</div>` : ''}
+      <h2>${hl(info.subject || t('row.noSubject'), termRegex(state.terms))}</h2>
       ${msgHeaderHtml(info)}
     </div>
     ${off ? `<div class="banner warn">${I.warn} ${esc(info.unavailable)}</div>` : ''}
     ${attChips(info)}
-    ${info.remoteImages && !state.images ? `<div class="banner">${I.shield} Imágenes externas bloqueadas por privacidad. <a data-act="images">Mostrar imágenes</a></div>` : ''}
+    ${info.remoteImages && !state.images ? `<div class="banner">${I.shield} ${t('reader.imagesBlocked')} <a data-act="images">${t('reader.showImages')}</a></div>` : ''}
   </div>`;
   const view = $('.msg-view', reader);
   let marks = [];
@@ -852,13 +895,13 @@ async function openMessage(ref, ctx = {}) {
     cur = (cur + d + marks.length) % marks.length;
     marks[cur].style.background = '#ffb02e';
     marks[cur].scrollIntoView({ block: 'center' });
-    $('.hitc', view).textContent = `${cur + 1} de ${marks.length}`;
+    $('.hitc', view).textContent = t('reader.hitOf', { i: cur + 1, n: marks.length });
   };
   view.appendChild(makeFrame(ref, (m) => {
     marks = m;
     if (marks.length) {
       hitnav.hidden = false;
-      $('.hitc', view).textContent = `${marks.length} coincidencia${marks.length > 1 ? 's' : ''}`;
+      $('.hitc', view).textContent = t('reader.hits', { n: marks.length });
     }
   }));
   wireMessageEvents(view, info, { crumbs });
@@ -888,7 +931,7 @@ async function openMessage(ref, ctx = {}) {
 }
 
 async function showHeaders(ref) {
-  $('#headersPre').textContent = 'Cargando…';
+  $('#headersPre').textContent = t('reader.loading');
   $('#headersDlg').showModal();
   try { $('#headersPre').textContent = await api(`/api/message/${enc(ref)}/headers`); } catch (e) { $('#headersPre').textContent = e.message; }
 }
@@ -908,7 +951,7 @@ async function openThread(key, focusRef) {
   if (gen !== readerGen) return;
   state.current = { type: 'thread', key };
   const rows = data.rows;
-  if (!rows.length) { reader.innerHTML = '<div class="welcome"><p>La conversación no tiene correos en los archivos activos.</p></div>'; return; }
+  if (!rows.length) { reader.innerHTML = `<div class="welcome"><p>${t('thread.empty')}</p></div>`; return; }
   const dups = rows.filter((r) => r.duplicateOf).length;
   const participants = [...new Set(rows.map((r) => r.sender_name).filter(Boolean))];
   const filesIn = [...new Set(rows.map((r) => r.fileName))];
@@ -917,23 +960,23 @@ async function openThread(key, focusRef) {
   const re = termRegex(state.terms);
   reader.innerHTML = `<div class="msg-view">
     <div class="msg-actions">
-      <button class="btn small" data-act="print">${I.print} Imprimir conversación</button>
-      <button class="btn small" data-act="attzip">${I.clip} Adjuntos de la conversación (ZIP)</button>
-      <button class="btn small" data-act="emlzip">${I.down} Correos (.eml ZIP)</button>
-      <button class="btn small" data-act="expand">Expandir todo</button>
-      ${dups ? `<label class="ck small"><input type="checkbox" data-act="dup" ${state.hideDup ? 'checked' : ''}> ocultar ${dups} copia(s)</label>` : ''}
+      <button class="btn small" data-act="print">${I.print} ${t('thread.print')}</button>
+      <button class="btn small" data-act="attzip">${I.clip} ${t('thread.attZip')}</button>
+      <button class="btn small" data-act="emlzip">${I.down} ${t('thread.emlZip')}</button>
+      <button class="btn small" data-act="expand">${t('thread.expand')}</button>
+      ${dups ? `<label class="ck small"><input type="checkbox" data-act="dup" ${state.hideDup ? 'checked' : ''}> ${t('thread.hideCopies', { n: dups })}</label>` : ''}
     </div>
     <div class="thread-head">
-      <h2>${hl(latest.subject || '(sin asunto)', re)}</h2>
-      <div class="muted">${rows.length} correos · ${participants.length} participantes: ${esc(participants.slice(0, 8).join(', '))}${participants.length > 8 ? '…' : ''}
-        ${filesIn.length > 1 ? `<br>${I.db} En ${filesIn.length} archivos: ${esc(filesIn.join(', '))}` : ''}</div>
+      <h2>${hl(latest.subject || t('row.noSubject'), re)}</h2>
+      <div class="muted">${esc(t('thread.summary', { emails: t('thread.emails', { n: rows.length }), people: t('thread.people', { n: participants.length }), names: participants.slice(0, 8).join(', ') + (participants.length > 8 ? '…' : '') }))}
+        ${filesIn.length > 1 ? `<br>${I.db} ${esc(t('thread.inFiles', { n: filesIn.length, names: filesIn.join(', ') }))}` : ''}</div>
     </div>
     <div class="cards">${rows.map((r) => `
       <div class="tcard${r.duplicateOf ? ' dup' : ''}" data-ref="${esc(r.ref)}" ${r.duplicateOf && state.hideDup ? 'hidden' : ''}>
         <div class="th">
           <div class="avatar" style="background:${colorFor(r.sender_email || r.sender_name)}">${esc(initials(r.sender_name))}</div>
-          <div class="tw"><div>${hl(r.sender_name || r.sender_email, re)}${r.att_count ? ' ' + I.clip : ''}${r.duplicateOf ? ' <span class="badge">copia</span>' : ''}</div><div>${hl(r.snippet || '', re)}</div></div>
-          <div class="td">${esc(fmtLong(r.date))}<br><span class="muted">${esc((r.folder || '').split('/').pop())}${filesIn.length > 1 ? ' · ' + esc(r.fileName.replace(/\.(pst|ost)$/i, '')) : ''}</span></div>
+          <div class="tw"><div>${hl(r.sender_name || r.sender_email, re)}${r.att_count ? ' ' + I.clip : ''}${r.duplicateOf ? ` <span class="badge">${t('thread.copy')}</span>` : ''}</div><div>${hl(r.snippet || '', re)}</div></div>
+          <div class="td">${esc(fmtLong(r.date))}<br><span class="muted">${esc((r.folder || '').split('/').pop().replace(/.+/, folderName))}${filesIn.length > 1 ? ' · ' + esc(r.fileName.replace(/\.(pst|ost)$/i, '')) : ''}</span></div>
         </div>
         <div class="tb" hidden></div>
       </div>`).join('')}</div>
@@ -946,12 +989,12 @@ async function openThread(key, focusRef) {
     card.classList.add('cur');
     if (!tb.dataset.loaded) {
       tb.dataset.loaded = '1';
-      tb.innerHTML = '<div class="msg-head muted">Cargando…</div>';
+      tb.innerHTML = `<div class="msg-head muted">${t('reader.loading')}</div>`;
       try {
         const info = await api(`/api/message/${enc(card.dataset.ref)}`);
         tb.innerHTML = `<div class="msg-actions" style="position:static">
-            <button class="btn small" data-a="open">Abrir solo</button>
-            ${info.unavailable ? '' : `<button class="btn small" data-a="print" title="Imprimir">${I.print}</button>
+            <button class="btn small" data-a="open">${t('thread.openAlone')}</button>
+            ${info.unavailable ? '' : `<button class="btn small" data-a="print" title="${t('reader.print')}">${I.print}</button>
             <button class="btn small" data-a="eml">${I.down} .eml</button>
             ${info.attachments.some((a) => !a.hidden) ? `<button class="btn small" data-a="attzip">${I.clip} ZIP</button>` : ''}`}
           </div>
@@ -978,10 +1021,10 @@ async function openThread(key, focusRef) {
     const b = e.target.closest('.msg-actions > [data-act], .msg-actions [data-act=dup]');
     if (!b) return;
     const a = b.dataset.act;
-    const subj = latest.subject || 'conversacion';
+    const subj = latest.subject || t('thread.fileName');
     if (a === 'print') window.open(`/print?conv=${enc(key)}${state.images ? '&images=1' : ''}`, '_blank');
-    else if (a === 'attzip') download(`/api/export/attachments.zip?conv=${enc(key)}&name=${enc('Adjuntos - ' + subj)}`);
-    else if (a === 'emlzip') download(`/api/export/eml.zip?conv=${enc(key)}&sort=date&dir=asc&name=${enc('Conversación - ' + subj)}`);
+    else if (a === 'attzip') download(`/api/export/attachments.zip?conv=${enc(key)}&name=${enc(t('thread.zipAtt', { subject: subj }))}`);
+    else if (a === 'emlzip') download(`/api/export/eml.zip?conv=${enc(key)}&sort=date&dir=asc&name=${enc(t('thread.zipEml', { subject: subj }))}`);
     else if (a === 'expand') $$('.tcard:not([hidden])', view).forEach((c) => { if ($('.tb', c).hidden) expand(c); });
     else if (a === 'dup') {
       state.hideDup = b.checked;
@@ -1025,19 +1068,19 @@ $('#menu').addEventListener('click', async (e) => {
     const c = await api(`/api/messages?${p}&limit=1`);
     count = c.capped ? (await api(`/api/count?${p}`)).total : c.total;
   } catch { /* */ }
-  const label = state.q ? 'Resultados de búsqueda' : state.nodeName;
-  if (count === 0) return toast('No hay correos que exportar', true);
+  const label = state.q ? t('export.results') : state.nodeName;
+  if (count === 0) return toast(t('export.none'), true);
   if (act === 'csv') return download(`/api/export/csv?${p}`);
   if (act === 'print') {
     const data = await api(`/api/messages?${p}&limit=200&count=0`);
-    if (count > 200) toast(`Se imprimirán los primeros 200 de ${fmtNum(count)} correos`);
+    if (count > 200) toast(t('export.printFirst', { n: count }));
     return printRefs(data.rows.map((r) => r.ref));
   }
-  if (count > 2000 && !confirm(`Se exportarán ${fmtNum(count)} correos. Puede tardar bastante y generar un archivo grande. ¿Continuar?`)) return;
-  if (act === 'attzip') download(`/api/export/attachments.zip?${p}&name=${enc('Adjuntos - ' + label)}`);
-  if (act === 'attzipflat') download(`/api/export/attachments.zip?${p}&flat=1&name=${enc('Adjuntos - ' + label)}`);
-  if (act === 'emlzip') download(`/api/export/eml.zip?${p}&name=${enc('Correos - ' + label)}`);
-  toast('Preparando la descarga… el archivo se genera mientras se descarga.');
+  if (count > 2000 && !confirm(t('export.confirm', { n: count }))) return;
+  if (act === 'attzip') download(`/api/export/attachments.zip?${p}&name=${enc(t('export.attName', { label }))}`);
+  if (act === 'attzipflat') download(`/api/export/attachments.zip?${p}&flat=1&name=${enc(t('export.attName', { label }))}`);
+  if (act === 'emlzip') download(`/api/export/eml.zip?${p}&name=${enc(t('export.emlName', { label }))}`);
+  toast(t('export.preparing'));
 });
 
 // ------------------------------------------------------------------ biblioteca
@@ -1064,33 +1107,33 @@ function renderLibrary() {
   const s = state.lib;
   if (!s) return;
   if (!s.files.length) {
-    $('#libList').innerHTML = '<div class="muted lib-empty">La biblioteca está vacía. Usa «Agregar archivos…» o «Agregar carpeta…» para incluir tus PST.</div>';
+    $('#libList').innerHTML = `<div class="muted lib-empty">${esc(t('lib.empty'))}</div>`;
   } else {
     $('#libList').innerHTML = s.files.map((f) => {
       const st = f.status;
       let status;
       let pct = null;
-      if (!f.enabled) status = '<span class="muted">Desactivado: no se indexa ni aparece en las búsquedas</span>';
-      else if (f.failed) status = `<span class="err">${I.warn} ${esc(f.failed)}</span> <button type="button" class="btn small" data-retry="${f.id}">Reintentar</button>`;
+      if (!f.enabled) status = `<span class="muted">${t('lib.disabled')}</span>`;
+      else if (f.failed) status = `<span class="err">${I.warn} ${esc(f.failed)}</span> <button type="button" class="btn small" data-retry="${f.id}">${t('lib.retry')}</button>`;
       else if (f.job) {
         const j = f.job;
         if (j.phase === 'messages') {
           pct = j.total ? (j.done / j.total) * 100 : 0;
-          status = j.stage === 'scanning' || j.stage === 'starting' ? 'Leyendo carpetas…'
-            : j.stage === 'finalizing' || j.stage === 'optimizing' ? 'Terminando…'
-              : `Indexando correos: ${fmtNum(j.done)} de ${fmtNum(j.total)} (${pct.toFixed(0)}%) ${fmtEta(j.eta)}`;
+          status = j.stage === 'scanning' || j.stage === 'starting' ? t('lib.readingFolders')
+            : j.stage === 'finalizing' || j.stage === 'optimizing' ? t('lib.finishing')
+              : t('lib.indexingMails', { done: fmtNum(j.done), total: fmtNum(j.total), pct: pct.toFixed(0), eta: fmtEta(j.eta) });
         } else {
           pct = j.attTotal ? (j.attDone / j.attTotal) * 100 : 0;
-          status = j.stage === 'optimizing' ? 'Terminando…' : `Leyendo contenido de adjuntos: ${fmtNum(j.attDone)} de ${fmtNum(j.attTotal)} (${pct.toFixed(0)}%) ${fmtEta(j.eta)}`;
+          status = j.stage === 'optimizing' ? t('lib.finishing') : t('lib.indexingAtts', { done: fmtNum(j.attDone), total: fmtNum(j.attTotal), pct: pct.toFixed(0), eta: fmtEta(j.eta) });
         }
-        if (j.careful || j.recovered) status += ' · <span title="Se encontró un elemento dañado y se saltó">recuperado tras un error</span>';
-      } else if (!st.complete) status = st.indexed ? `En cola · ${fmtNum(st.indexed)} correos ya indexados (continuará donde quedó)` : 'En cola para indexar';
-      else if (!st.attComplete) status = `${I.mail} ${fmtNum(st.indexed)} correos listos · adjuntos en cola`;
-      else status = `<span class="ok">✓ ${fmtNum(st.indexed)} correos · adjuntos indexados</span>${st.errors ? ` · ${fmtNum(st.errors)} ilegibles` : ''}`;
-      if (!f.exists) status += ` · <span class="err" title="${esc(f.path)}">archivo no disponible (¿disco desconectado?)</span>`;
-      if (f.overLimit) status += ` · <span class="err">supera el máximo de ${s.maxActive} archivos activos: desactiva otro para incluirlo</span>`;
+        if (j.careful || j.recovered) status += ` · <span title="${t('lib.recoveredTitle')}">${t('lib.recovered')}</span>`;
+      } else if (!st.complete) status = st.indexed ? t('lib.queuedResume', { n: st.indexed }) : t('lib.queued');
+      else if (!st.attComplete) status = `${I.mail} ${t('lib.attsQueued', { n: st.indexed })}`;
+      else status = `<span class="ok">${t('lib.done', { n: st.indexed })}</span>${st.errors ? ` · ${t('lib.unreadable', { n: st.errors })}` : ''}`;
+      if (!f.exists) status += ` · <span class="err" title="${esc(f.path)}">${t('lib.unavailable')}</span>`;
+      if (f.overLimit) status += ` · <span class="err">${t('lib.overLimit', { max: s.maxActive })}</span>`;
       return `<div class="litem${f.enabled ? '' : ' off'}">
-        <label class="ck" title="Incluir en las búsquedas"><input type="checkbox" data-enable="${f.id}" ${f.enabled ? 'checked' : ''}></label>
+        <label class="ck" title="${t('lib.include')}"><input type="checkbox" data-enable="${f.id}" ${f.enabled ? 'checked' : ''}></label>
         <div class="li">
           <div class="ln1"><b>${esc(f.name)}</b> <span class="muted">${fmtSize(f.size)}</span></div>
           <div class="ln2 muted" title="${esc(f.path)}">${esc(f.path)}</div>
@@ -1098,21 +1141,23 @@ function renderLibrary() {
           ${pct != null ? `<div class="pbar"><div style="width:${pct.toFixed(1)}%"></div></div>` : ''}
         </div>
         <div class="la">
-          <button type="button" class="btn small" data-reindex="${f.id}" title="Borrar el índice de este archivo y volver a crearlo">Reindexar</button>
-          <button type="button" class="btn small" data-remove="${f.id}" title="Quitar de la biblioteca (el PST no se modifica)">Quitar</button>
+          <button type="button" class="btn small" data-reindex="${f.id}" title="${t('lib.reindexTitle')}">${t('lib.reindex')}</button>
+          <button type="button" class="btn small" data-remove="${f.id}" title="${t('lib.removeTitle')}">${t('lib.remove')}</button>
         </div>
       </div>`;
     }).join('');
   }
   const active = s.files.filter((f) => f.active).length;
-  $('#libSummary').innerHTML = `${s.files.length} archivo(s) · ${active} activo(s) · ${fmtNum(s.totals.messages)} correos indexados${s.lastConsolidation && s.lastConsolidation.duplicates ? ` · ${fmtNum(s.lastConsolidation.duplicates)} copias repetidas ocultas` : ''}${s.consolidating ? ' · detectando correos repetidos…' : ''}`;
-  $('#btnPause').textContent = s.paused ? 'Reanudar indexado' : 'Pausar indexado';
+  $('#libSummary').textContent = t('lib.summary', { files: t('lib.files', { n: s.files.length }), active: t('lib.active', { n: active }), messages: fmtNum(s.totals.messages) })
+    + (s.lastConsolidation && s.lastConsolidation.duplicates ? ` · ${t('lib.dupsHidden', { n: s.lastConsolidation.duplicates })}` : '')
+    + (s.consolidating ? ` · ${t('lib.consolidating')}` : '');
+  $('#btnPause').textContent = t(s.paused ? 'lib.resume' : 'lib.pause');
   $('#btnPause').hidden = !s.paused && !s.files.some((f) => f.enabled && f.exists && !f.failed && !f.status.attComplete);
   const mig = s.migration;
   $('#libNote').innerHTML = [
-    `Índices guardados en ${desktop ? `<a data-act="datafolder" title="Abrir la carpeta">${esc(s.dataDir)}</a>` : `<code>${esc(s.dataDir)}</code>`}.`,
+    t('lib.dataDir', { dir: desktop ? `<a data-act="datafolder" title="${t('lib.openFolder')}">${esc(s.dataDir)}</a>` : `<code>${esc(s.dataDir)}</code>` }),
     mig && mig.from && !mig.oldDeleted
-      ? `Biblioteca importada y verificada desde <code>${esc(mig.from)}</code> (${fmtNum(mig.messages)} correos).${desktop ? ' <a data-act="delold">Borrar la carpeta antigua</a>' : ''}`
+      ? t('lib.migrated', { dir: `<code>${esc(mig.from)}</code>`, n: mig.messages }) + (desktop ? ` <a data-act="delold">${t('lib.deleteOld')}</a>` : '')
       : '',
   ].filter(Boolean).join(' ');
 }
@@ -1125,13 +1170,13 @@ $('#libList').addEventListener('click', async (e) => {
       afterLibraryChange();
     } else if (t.dataset.remove) {
       const f = state.lib.files.find((x) => x.id === Number(t.dataset.remove));
-      if (!confirm(`¿Quitar «${f.name}» de la biblioteca? El archivo PST no se modifica.`)) return;
-      const del = confirm('¿Borrar también su índice?\n\nAceptar: se borra (si lo vuelves a agregar habrá que indexarlo de nuevo).\nCancelar: se conserva para reutilizarlo si lo vuelves a agregar.');
+      if (!confirm(t('lib.confirmRemove', { name: f.name }))) return;
+      const del = confirm(t('lib.confirmDeleteIndex'));
       await api('/api/library/remove', { id: f.id, deleteIndex: del });
       afterLibraryChange();
     } else if (t.dataset.reindex) {
       const f = state.lib.files.find((x) => x.id === Number(t.dataset.reindex));
-      if (!confirm(`¿Volver a indexar «${f.name}» desde cero?`)) return;
+      if (!confirm(t('lib.confirmReindex', { name: f.name }))) return;
       await api('/api/library/reindex', { id: f.id });
       afterLibraryChange();
     } else if (t.dataset.retry) {
@@ -1144,14 +1189,14 @@ $('#libList').addEventListener('click', async (e) => {
 });
 
 async function addPaths(body, url = '/api/library/add') {
-  libMsg('Revisando archivos…');
+  libMsg(esc(t('lib.checking')));
   try {
     const r = await api(url, body);
     const parts = [];
-    if (r.found != null) parts.push(`${r.found} archivo(s) PST/OST encontrados.`);
-    if (r.added.length) parts.push(`Agregados: ${r.added.map((f) => esc(f.name) + (f.relocated ? ' (ruta actualizada)' : '')).join(', ')}.`);
-    if (r.skipped.length) parts.push(`No agregados: ${r.skipped.map((s) => `${esc(s.path.split(/[\\/]/).pop())} (${esc(s.reason)})`).join(', ')}.`);
-    libMsg(parts.join(' ') || 'No se encontraron archivos.', !r.added.length && r.skipped.length > 0);
+    if (r.found != null) parts.push(esc(t('lib.found', { n: r.found })));
+    if (r.added.length) parts.push(t('lib.added', { list: r.added.map((f) => esc(f.name) + (f.relocated ? ` (${t('lib.relocated')})` : '')).join(', ') }));
+    if (r.skipped.length) parts.push(t('lib.notAdded', { list: r.skipped.map((s) => `${esc(s.path.split(/[\\/]/).pop())} (${esc(s.reason)})`).join(', ') }));
+    libMsg(parts.join(' ') || esc(t('lib.noneFound')), !r.added.length && r.skipped.length > 0);
     if (r.added.length) afterLibraryChange();
   } catch (err) {
     libMsg(esc(err.message), true);
@@ -1178,7 +1223,7 @@ $('#libNote').addEventListener('click', async (e) => {
   if (e.target.closest('[data-act=datafolder]')) desktop.openDataFolder();
   if (e.target.closest('[data-act=delold]')) {
     const r = await desktop.deleteOldLibrary();
-    if (r && r.ok) libMsg('Se borró la biblioteca antigua.');
+    if (r && r.ok) libMsg(esc(t('lib.oldDeleted')));
     else if (r && r.error) libMsg(esc(r.error), true);
     refreshState();
   }
@@ -1205,9 +1250,9 @@ $('#browseBox').addEventListener('toggle', (e) => { if (e.target.open) browse(''
 async function browse(dir) {
   try {
     const r = await api(`/api/browse?dir=${enc(dir)}`);
-    $('#browsePath').innerHTML = r.dir ? `${esc(r.dir)} <button type="button" class="btn small" data-adddir="${esc(r.dir)}">Agregar todos los PST de esta carpeta</button>` : 'Ubicaciones';
+    $('#browsePath').innerHTML = r.dir ? `${esc(r.dir)} <button type="button" class="btn small" data-adddir="${esc(r.dir)}">${t('lib.addAllHere')}</button>` : esc(t('lib.locations'));
     $('#browseList').innerHTML = (r.parent !== null && r.dir ? `<div data-dir="${esc(r.parent)}">⬆ ..</div>` : '') +
-      r.entries.map((x) => (x.dir ? `<div data-dir="${esc(x.path)}">${I.folder} ${esc(x.name)}</div>` : `<div data-file="${esc(x.path)}"><span>${I.mail} ${esc(x.name)}</span><span class="muted">${fmtSize(x.size)} · agregar</span></div>`)).join('');
+      r.entries.map((x) => (x.dir ? `<div data-dir="${esc(x.path)}">${I.folder} ${esc(x.name)}</div>` : `<div data-file="${esc(x.path)}"><span>${I.mail} ${esc(x.name)}</span><span class="muted">${fmtSize(x.size)} · ${t('lib.addOne')}</span></div>`)).join('');
   } catch (e) {
     $('#browseList').innerHTML = `<div class="err">${esc(e.message)}</div>`;
   }
@@ -1247,7 +1292,7 @@ $('#cmpDlg').addEventListener('close', () => clearTimeout(cmpTimer));
 const shortName = (n) => String(n || '').replace(/\.(pst|ost)$/i, '');
 function fmtPeriod(a, b) {
   if (a == null || b == null) return '';
-  const m = (ms) => { const d = new Date(ms); return `${MONTHS[d.getMonth()]} ${d.getFullYear()}`; };
+  const m = (ms) => new Date(ms).toLocaleDateString(LOC(), { month: 'short', year: 'numeric' });
   return m(a) === m(b) ? m(a) : `${m(a)} – ${m(b)}`;
 }
 
@@ -1263,32 +1308,31 @@ async function renderCompare() {
   if (!$('#cmpDlg').open) return;
   const files = data.files;
   const byId = new Map(files.map((f) => [f.id, f]));
-  const nameOf = (id) => esc(shortName((byId.get(id) || {}).name || `archivo ${id}`));
-  const msg = data.consolidating ? 'Comparando los archivos… (tarda unos segundos)'
-    : data.indexing ? 'Hay archivos indexándose: las cifras se actualizan cuando termina cada uno.'
-      : data.stale ? 'La comparación no está al día. Usa «Recalcular».' : '';
+  const nameOf = (id) => esc(shortName((byId.get(id) || {}).name || `#${id}`));
+  const msg = data.consolidating ? t('cmp.running') : data.indexing ? t('cmp.indexing') : data.stale ? t('cmp.stale') : '';
   $('#cmpMsg').textContent = msg;
   $('#cmpMsg').className = 'lib-msg';
   $('#cmpMsg').hidden = !msg;
 
   if (!files.length) {
-    $('#cmpBody').innerHTML = '<div class="muted lib-empty">La biblioteca está vacía.</div>';
+    $('#cmpBody').innerHTML = `<div class="muted lib-empty">${t('cmp.emptyLib')}</div>`;
   } else {
     const rows = files.map((f) => {
       const s = f.stats;
       const v = f.verdict;
       let verdict;
-      if (v.kind === 'excluded') verdict = `<span class="muted">No comparado: ${esc(v.reason)}</span>`;
-      else if (v.kind === 'empty') verdict = '<span class="tag warn">Descartable</span> No tiene correos (archivo vacío o ilegible).';
-      else if (v.kind === 'pending' || !s) verdict = '<span class="muted">Calculando…</span>';
-      else if (v.kind === 'keep') verdict = `<span class="tag ok">Conservar</span> ${fmtNum(s.unique)} elemento(s) solo están en este archivo`;
+      const discard = `<span class="tag warn">${t('cmp.discardable')}</span>`;
+      if (v.kind === 'excluded') verdict = `<span class="muted">${esc(t('cmp.excluded', { reason: t('cmp.reason.' + v.reason) }))}</span>`;
+      else if (v.kind === 'empty') verdict = `${discard} ${esc(t('cmp.emptyFile'))}`;
+      else if (v.kind === 'pending' || !s) verdict = `<span class="muted">${t('cmp.calculating')}</span>`;
+      else if (v.kind === 'keep') verdict = `<span class="tag ok">${t('cmp.keep')}</span> ${esc(t('cmp.keepText', { n: s.unique }))}`;
       else {
-        verdict = '<span class="tag warn">Descartable</span> Todo su contenido está en otros archivos.';
-        if (v.keepWith.length) verdict += ` Si lo descartas, conserva: ${v.keepWith.map((k) => `<b>${nameOf(k.id)}</b> <span class="muted">(${fmtNum(k.n)} solo ahí)</span>`).join(', ')}.`;
-        else if (s.total) verdict += ' Cada elemento tiene al menos dos copias más.';
-        if (v.mutual && v.mutual.length) verdict += ` <span class="err">${I.warn} ${v.mutual.map(nameOf).join(', ')} también figura como descartable: descarta solo uno y vuelve a comparar.</span>`;
+        verdict = `${discard} ${esc(t('cmp.allElsewhere'))}`;
+        if (v.keepWith.length) verdict += ' ' + t('cmp.keepWith', { list: v.keepWith.map((k) => `<b>${nameOf(k.id)}</b> <span class="muted">(${esc(t('cmp.onlyThere', { n: k.n }))})</span>`).join(', ') });
+        else if (s.total) verdict += ' ' + esc(t('cmp.twoCopies'));
+        if (v.mutual && v.mutual.length) verdict += ` <span class="err">${I.warn} ${t('cmp.mutual', { names: v.mutual.map(nameOf).join(', ') })}</span>`;
       }
-      if (s && !f.complete) verdict += ' <span class="muted">· índice incompleto, resultado provisional</span>';
+      if (s && !f.complete) verdict += ` <span class="muted">${t('cmp.provisional')}</span>`;
       const pct = s && s.total ? Math.round((s.unique / s.total) * 100) : 0;
       return `<tr class="${f.active ? '' : 'off'}">
         <td><b title="${esc(f.path)}">${esc(shortName(f.name))}</b><div class="muted">${fmtSize(f.size)}</div></td>
@@ -1296,9 +1340,9 @@ async function renderCompare() {
         <td class="num">${s ? fmtNum(s.total) : ''}</td>
         <td class="num">${s ? `<b>${fmtNum(s.unique)}</b><div class="muted">${pct}%</div>` : ''}</td>
         <td class="num">${s ? fmtNum(s.shared) : ''}</td>
-        <td class="num" title="Mismo correo guardado más de una vez dentro de este archivo">${s ? fmtNum(s.intraDup) : ''}</td>
+        <td class="num" title="${t('cmp.intraTitle')}">${s ? fmtNum(s.intraDup) : ''}</td>
         <td class="verdict">${verdict}</td>
-        <td>${s && s.unique ? `<button type="button" class="btn small" data-uniq="${f.id}" title="Mostrar en la lista solo los elementos de este archivo que no están en ningún otro (luego se pueden exportar)">Ver únicos</button>` : ''}</td>
+        <td>${s && s.unique ? `<button type="button" class="btn small" data-uniq="${f.id}" title="${t('cmp.viewUniqueTitle')}">${t('cmp.viewUnique')}</button>` : ''}</td>
       </tr>`;
     }).join('');
 
@@ -1314,23 +1358,23 @@ async function renderCompare() {
           const p = (n / a.stats.total) * 100;
           const txt = n === 0 ? '0%' : p < 1 ? '<1%' : `${Math.floor(p)}%`;
           return `<td class="num heat" style="background:color-mix(in srgb, var(--accent) ${Math.round(p * 0.35)}%, transparent)"
-            title="${fmtNum(n)} de los ${fmtNum(a.stats.total)} elementos de ${esc(shortName(a.name))} están también en ${esc(shortName(b.name))}">${txt}</td>`;
+            title="${esc(t('cmp.cellTitle', { n, total: fmtNum(a.stats.total), a: shortName(a.name), b: shortName(b.name) }))}">${txt}</td>`;
         }).join('');
         return `<tr><th class="rowh" title="${esc(a.name)}">${esc(shortName(a.name))}</th>${cells}</tr>`;
       }).join('');
-      matrix = `<h4>Solape: de los elementos de cada fila, qué parte está también en cada columna</h4>
+      matrix = `<h4>${t('cmp.matrix')}</h4>
         <div class="cmp-wrap"><table class="cmp-table cmp-matrix"><thead><tr><th></th>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
     }
 
     $('#cmpBody').innerHTML = `<div class="cmp-wrap"><table class="cmp-table">
-      <thead><tr><th>Archivo</th><th>Período</th><th class="num">Elementos</th><th class="num">Únicos</th>
-        <th class="num">Con copia en otro</th><th class="num">Repetidos dentro</th><th>Veredicto</th><th></th></tr></thead>
+      <thead><tr><th>${t('cmp.col.file')}</th><th>${t('cmp.col.period')}</th><th class="num">${t('cmp.col.items')}</th><th class="num">${t('cmp.col.unique')}</th>
+        <th class="num">${t('cmp.col.shared')}</th><th class="num">${t('cmp.col.intra')}</th><th>${t('cmp.col.verdict')}</th><th></th></tr></thead>
       <tbody>${rows}</tbody></table></div>${matrix}`;
   }
   const done = files.filter((f) => f.stats);
   const total = done.reduce((n, f) => n + f.stats.total, 0);
   const uniq = done.reduce((n, f) => n + f.stats.unique, 0);
-  $('#cmpSummary').textContent = done.length ? `${done.length} archivo(s) comparados · ${fmtNum(total)} elementos · ${fmtNum(uniq)} únicos` : '';
+  $('#cmpSummary').textContent = done.length ? t('cmp.summary', { files: t('lib.files', { n: done.length }), items: t('cmp.items', { n: total }), unique: fmtNum(uniq) }) : '';
   if (data.consolidating || data.indexing) cmpTimer = setTimeout(renderCompare, data.consolidating ? 1500 : 5000);
 }
 
@@ -1371,21 +1415,18 @@ function headerProgress(s) {
     const pos = s.files.filter((f) => f.enabled).indexOf(job) + 1;
     if (j.phase === 'messages') {
       pct = j.total ? (j.done / j.total) * 100 : 0;
-      text = `Indexando ${job.name} (${pos}/${n}) · ${j.stage === 'indexing' ? `${pct.toFixed(0)}% ${fmtEta(j.eta)}` : 'preparando…'}`;
+      text = t('prog.indexing', { name: job.name, pos, count: n, detail: j.stage === 'indexing' ? `${pct.toFixed(0)}% ${fmtEta(j.eta)}` : t('prog.preparing') });
     } else {
       pct = j.attTotal ? (j.attDone / j.attTotal) * 100 : 0;
-      text = `Adjuntos de ${job.name} (${pos}/${n}) · ${pct.toFixed(0)}% ${fmtEta(j.eta)}`;
+      text = t('prog.attachments', { name: job.name, pos, count: n, pct: pct.toFixed(0), eta: fmtEta(j.eta) });
     }
-  } else if (s.paused && s.files.some((f) => f.enabled && !f.status.attComplete)) text = '⏸ Indexado en pausa';
-  else if (s.consolidating) text = 'Detectando correos repetidos…';
-  else {
-    const n = s.files.filter((f) => f.active).length;
-    text = `✓ ${n} archivo${n === 1 ? '' : 's'} · ${fmtNum(s.totals.messages)} correos`;
-  }
+  } else if (s.paused && s.files.some((f) => f.enabled && !f.status.attComplete)) text = t('prog.paused');
+  else if (s.consolidating) text = t('prog.consolidating');
+  else text = t('prog.ready', { files: t('lib.files', { n: s.files.filter((f) => f.active).length }), messages: fmtNum(s.totals.messages) });
   box.classList.toggle('done', pct == null);
   $('.ptext', box).textContent = text;
   $('.pbar div', box).style.width = (pct || 0) + '%';
-  $('#menuPause').textContent = s.paused ? 'Reanudar indexado' : 'Pausar indexado';
+  $('#menuPause').textContent = t(s.paused ? 'menu.resume' : 'menu.pause');
 }
 
 async function refreshState(force = false) {
@@ -1393,9 +1434,11 @@ async function refreshState(force = false) {
   let s;
   try { s = await api('/api/state'); } catch { pollTimer = setTimeout(refreshState, 3000); return; }
   state.lib = s;
+  // el idioma guardado en el servidor manda (p. ej. si se cambió desde el menú de la app de escritorio)
+  if (s.lang && s.lang !== LANG && LOCALES[s.lang]) setLangLocal(s.lang);
   headerProgress(s);
   if (s.files.length && reader.querySelector('.welcome [data-act=open]')) {
-    reader.innerHTML = '<div class="welcome"><p>Selecciona un correo para verlo.</p></div>';
+    reader.innerHTML = `<div class="welcome"><p>${t('reader.select')}</p></div>`;
   }
   if ($('#libDlg').open) renderLibrary();
   // firma: qué archivos están activos y cuánto llevan indexado
@@ -1463,6 +1506,32 @@ document.addEventListener('keydown', (e) => {
 
 // ------------------------------------------------------------------ inicio
 
+function setLangLocal(lang) {
+  LANG = lang;
+  LS.set('lang', lang);
+  applyI18n();
+  if (state.node.type === 'all') state.nodeName = t('tree.all');
+  renderSortOptions();
+  renderChips();
+  updateAttSel();
+  updateListHeader();
+}
+// cambio de idioma: se guarda en el servidor (también lo usan la app de escritorio, la impresión
+// y las exportaciones) y se recarga la página para rehacer todos los textos
+$('#langSel').addEventListener('change', async (e) => {
+  try {
+    await api('/api/settings', { lang: e.target.value });
+    LS.set('lang', e.target.value);
+    location.reload();
+  } catch (err) {
+    toast(err.message, true);
+    e.target.value = LANG;
+  }
+});
+
+applyI18n();
+state.nodeName = t('tree.all');
+renderSortOptions();
 renderChips();
 updateAttSel();
 refreshState(true).then((s) => {

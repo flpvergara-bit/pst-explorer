@@ -53,7 +53,7 @@ const FIELD_ALIASES = {
   de: 'sender', from: 'sender', remitente: 'sender',
   para: 'recipients', to: 'recipients', cc: 'recipients', destinatario: 'recipients',
   asunto: 'subject', subject: 'subject',
-  adjunto: 'attachments', adjuntos: 'attachments', archivo: 'attachments', att: 'attachments',
+  adjunto: 'attachments', adjuntos: 'attachments', archivo: 'attachments', att: 'attachments', attachment: 'attachments', attachments: 'attachments', file: 'attachments',
   cuerpo: 'body', body: 'body', texto: 'body',
   contenido: 'content', content: 'content', dentro: 'content',
 };

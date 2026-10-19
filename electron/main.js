@@ -11,6 +11,8 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const migrate = require('./migrate');
+const I = require('../src/i18n');
+const { t } = I;
 
 const ROOT = path.join(__dirname, '..');
 const ICON = path.join(__dirname, 'icons', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
@@ -23,6 +25,8 @@ if (process.env.PSTX_USERDATA) app.setPath('userData', path.resolve(process.env.
 const LEGACY_HINT = process.env.PSTX_LEGACY ? [path.resolve(process.env.PSTX_LEGACY)] : null;
 const DATA = path.join(app.getPath('userData'), 'data');
 const LOG_DIR = path.join(app.getPath('userData'), 'logs');
+// idioma de menús y diálogos: el mismo que eligió el usuario en la interfaz (settings.json)
+I.setLang(I.loadSettings(DATA).lang);
 
 let win = null;
 let server = null;
@@ -57,7 +61,7 @@ async function start() {
   try {
     await importLegacyIfNeeded();
   } catch (e) {
-    dialog.showErrorBox('PST Explorer', `No se pudo importar la biblioteca anterior:\n\n${e.message}\n\nLa app empezará con una biblioteca vacía; la carpeta original no se modificó.`);
+    dialog.showErrorBox('PST Explorer', t('app.importFailed', { msg: e.message }));
   }
   createTray();
   startServer();
@@ -81,7 +85,7 @@ function startServer() {
   server.on('exit', (code) => {
     server = null;
     if (quitting) return;
-    dialog.showErrorBox('PST Explorer', `El motor de la aplicación se detuvo (código ${code}).\nRevisa el registro en:\n${LOG_DIR}`);
+    dialog.showErrorBox('PST Explorer', t('app.engineStopped', { code, dir: LOG_DIR }));
     app.exit(1);
   });
 }
@@ -100,13 +104,18 @@ async function onServerMessage(m) {
     if (status.indexing && blocker == null) blocker = powerSaveBlocker.start('prevent-app-suspension');
     if (!status.indexing && blocker != null) { powerSaveBlocker.stop(blocker); blocker = null; }
     if (wasBusy && !busy() && !status.paused) {
-      notify('Indexado terminado', 'Todos los archivos de la biblioteca están listos para buscar.');
+      notify(t('app.indexDone'), t('app.indexDoneBody'));
       // si la ventana estaba oculta solo para seguir indexando, ya se puede cerrar
       if (!win || win.isDestroyed() || !win.isVisible()) quit();
       else if (updateReady) offerUpdate();
     }
   } else if (m.type === 'fatal') {
-    dialog.showErrorBox('PST Explorer', `No se pudo iniciar el motor: ${m.error}`);
+    dialog.showErrorBox('PST Explorer', t('app.engineFailed', { msg: m.error }));
+  } else if (m.type === 'lang') {
+    // el usuario cambió el idioma en la interfaz: rehacer menús y bandeja
+    I.setLang(m.lang);
+    Menu.setApplicationMenu(buildMenu());
+    updateTray();
   }
 }
 
@@ -157,7 +166,7 @@ function createWindow() {
       win.hide();
       if (!hiddenNotice) {
         hiddenNotice = true;
-        notify('PST Explorer sigue trabajando', 'El indexado continúa en segundo plano. Ábrelo o ciérralo desde el ícono junto al reloj.');
+        notify(t('app.stillWorking'), t('app.stillWorkingBody'));
       }
     } else {
       quit();
@@ -218,14 +227,14 @@ app.on('window-all-closed', () => { if (quitting || !busy()) quit(); });
 // Descargas (ZIP, .eml, adjuntos, CSV): diálogo «Guardar como»
 app.whenReady().then(() => {
   session.defaultSession.on('will-download', (_e, item) => {
-    item.setSaveDialogOptions({ title: 'Guardar', defaultPath: path.join(app.getPath('downloads'), item.getFilename()) });
+    item.setSaveDialogOptions({ title: t('app.save'), defaultPath: path.join(app.getPath('downloads'), item.getFilename()) });
     item.on('updated', () => {
       const total = item.getTotalBytes();
       if (win && total) win.setProgressBar(item.getReceivedBytes() / total);
     });
     item.once('done', (_ev, state) => {
       if (win) win.setProgressBar(-1);
-      if (state === 'completed') notify('Descarga completa', path.basename(item.getSavePath()), () => shell.showItemInFolder(item.getSavePath()));
+      if (state === 'completed') notify(t('app.downloadDone'), path.basename(item.getSavePath()), () => shell.showItemInFolder(item.getSavePath()));
     });
   });
 });
@@ -242,16 +251,16 @@ function createTray() {
 function updateTray() {
   if (!tray) return;
   let tip = 'PST Explorer';
-  if (status.paused && status.pending) tip += ' · indexado en pausa';
-  else if (status.job) tip += ` · ${status.job.phase === 'messages' ? 'Indexando' : 'Leyendo adjuntos de'} ${status.job.name.replace(/\.(pst|ost)$/i, '')} · ${status.job.pct} %`;
-  else if (status.consolidating) tip += ' · detectando correos repetidos';
+  if (status.paused && status.pending) tip += ' · ' + t('tray.paused');
+  else if (status.job) tip += ' · ' + t(status.job.phase === 'messages' ? 'tray.indexing' : 'tray.attachments', { name: status.job.name.replace(/\.(pst|ost)$/i, ''), pct: status.job.pct });
+  else if (status.consolidating) tip += ' · ' + t('tray.consolidating');
   tray.setToolTip(tip);
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'Abrir PST Explorer', click: showWindow },
+    { label: t('tray.open'), click: showWindow },
     { type: 'separator' },
-    { label: status.paused ? 'Reanudar indexado' : 'Pausar indexado', enabled: !!(status.pending || status.indexing || status.paused), click: () => server && server.postMessage({ type: 'pause', paused: !status.paused }) },
+    { label: t(status.paused ? 'tray.resume' : 'tray.pause'), enabled: !!(status.pending || status.indexing || status.paused), click: () => server && server.postMessage({ type: 'pause', paused: !status.paused }) },
     { type: 'separator' },
-    { label: 'Salir', click: quit },
+    { label: t('tray.quit'), click: quit },
   ]));
 }
 
@@ -267,14 +276,14 @@ function notify(title, body, onClick) {
 function setupIpc() {
   ipcMain.handle('pick-files', async () => {
     const r = await dialog.showOpenDialog(...parentWin(), {
-      title: 'Agregar archivos de datos de Outlook',
+      title: t('dlg.addFiles'),
       properties: ['openFile', 'multiSelections'],
-      filters: [{ name: 'Archivos de Outlook', extensions: ['pst', 'ost'] }, { name: 'Todos los archivos', extensions: ['*'] }],
+      filters: [{ name: t('dlg.outlookFiles'), extensions: ['pst', 'ost'] }, { name: t('dlg.allFiles'), extensions: ['*'] }],
     });
     return r.canceled ? [] : r.filePaths;
   });
   ipcMain.handle('pick-folder', async () => {
-    const r = await dialog.showOpenDialog(...parentWin(), { title: 'Carpeta que contiene los archivos PST/OST', properties: ['openDirectory'] });
+    const r = await dialog.showOpenDialog(...parentWin(), { title: t('dlg.pickFolder'), properties: ['openDirectory'] });
     return r.canceled ? null : r.filePaths[0];
   });
   ipcMain.handle('open-data-folder', () => shell.openPath(DATA));
@@ -282,15 +291,15 @@ function setupIpc() {
     const file = path.join(DATA, 'migration.json');
     let info;
     try { info = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return { ok: false }; }
-    if (!info.from || info.oldDeleted || !migrate.isLibraryDir(info.from)) return { ok: false, error: 'La carpeta antigua ya no existe.' };
+    if (!info.from || info.oldDeleted || !migrate.isLibraryDir(info.from)) return { ok: false, error: t('dlg.oldGone') };
     const r = await dialog.showMessageBox(...parentWin(), {
       type: 'warning',
-      buttons: ['Borrar carpeta antigua', 'Cancelar'],
+      buttons: [t('dlg.deleteOld'), t('dlg.cancel')],
       defaultId: 1,
       cancelId: 1,
-      title: 'Borrar biblioteca antigua',
-      message: '¿Borrar la carpeta de la versión anterior?',
-      detail: `${info.from}\n\nLa biblioteca ya está copiada y verificada en esta app. Los archivos PST no se tocan; solo se borran los índices antiguos.`,
+      title: t('dlg.deleteOldTitle'),
+      message: t('dlg.deleteOldMsg'),
+      detail: t('dlg.deleteOldDetail', { dir: info.from }),
     });
     if (r.response !== 0) return { ok: false, canceled: true };
     // solo se borra lo que forma la biblioteca, no la carpeta padre
@@ -315,11 +324,14 @@ async function importLegacyIfNeeded() {
     const r = await dialog.showMessageBox({
       type: 'question',
       title: 'PST Explorer',
-      buttons: ['Importar', 'Elegir otra carpeta…', 'Empezar con una biblioteca vacía'],
+      buttons: [t('dlg.import'), t('dlg.chooseOther'), t('dlg.startEmpty')],
       defaultId: 0,
       cancelId: 2,
-      message: 'Se encontró una biblioteca de una versión anterior',
-      detail: `${s.dir}\n\n${s.files} archivo(s) · ${s.messages.toLocaleString('es-CL')} correos indexados · ${(s.bytes / 1024 ** 3).toFixed(1).replace('.', ',')} GB\n\nSe copiará a esta app y se verificará; la carpeta original no se modifica. Así no hay que volver a indexar.`,
+      message: t('dlg.legacyFound'),
+      detail: t('dlg.legacyDetail', {
+        dir: s.dir, files: t('dlg.files', { n: s.files }), messages: I.fmtNum(s.messages),
+        gb: (s.bytes / 1024 ** 3).toLocaleString(I.locale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
+      }),
     });
     if (r.response === 0) src = s.dir;
     if (r.response === 1) src = await pickLegacyFolder();
@@ -331,11 +343,11 @@ async function importLegacyIfNeeded() {
 }
 
 async function pickLegacyFolder() {
-  const r = await dialog.showOpenDialog({ title: 'Carpeta «data» de la versión anterior', properties: ['openDirectory'] });
+  const r = await dialog.showOpenDialog({ title: t('dlg.legacyPick'), properties: ['openDirectory'] });
   if (r.canceled) return null;
   const dir = migrate.isLibraryDir(r.filePaths[0]) ? r.filePaths[0] : path.join(r.filePaths[0], 'data');
   if (!migrate.isLibraryDir(dir)) {
-    dialog.showErrorBox('PST Explorer', 'Esa carpeta no contiene una biblioteca de PST Explorer (falta library.json o la carpeta index).');
+    dialog.showErrorBox('PST Explorer', t('dlg.notLibrary'));
     return null;
   }
   return dir;
@@ -348,9 +360,9 @@ async function runImport(src) {
     try { running = (await fetch('http://localhost:8765/api/state', { signal: AbortSignal.timeout(1500) })).ok; } catch { /* no responde */ }
     if (!running) break;
     const r = await dialog.showMessageBox({
-      type: 'warning', title: 'PST Explorer', buttons: ['Reintentar', 'Cancelar'], defaultId: 0, cancelId: 1,
-      message: 'Cierra primero la versión anterior',
-      detail: 'La versión anterior de PST Explorer está abierta (la ventana negra). Ciérrala y pulsa Reintentar.',
+      type: 'warning', title: 'PST Explorer', buttons: [t('dlg.retry'), t('dlg.cancel')], defaultId: 0, cancelId: 1,
+      message: t('dlg.closeOld'),
+      detail: t('dlg.closeOldDetail'),
     });
     if (r.response !== 0) return;
   }
@@ -359,9 +371,9 @@ async function runImport(src) {
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
   pw.setMenu(null);
-  await pw.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(`<!doctype html><html><body style="font:14px Segoe UI,sans-serif;margin:24px;color:#1f2328">
-    <h3 style="margin:0 0 12px">Importando la biblioteca anterior…</h3>
-    <div id="t" style="color:#57606a;margin-bottom:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Preparando</div>
+  await pw.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(`<!doctype html><html lang="${I.getLang()}"><body style="font:14px Segoe UI,sans-serif;margin:24px;color:#1f2328">
+    <h3 style="margin:0 0 12px">${t('dlg.importing')}</h3>
+    <div id="t" style="color:#57606a;margin-bottom:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t('dlg.preparing')}</div>
     <div style="height:8px;background:#eef1f4;border-radius:4px;overflow:hidden"><div id="b" style="height:100%;width:0;background:#1f6feb"></div></div>
     <script>window.set=(p,t)=>{document.getElementById('b').style.width=p+'%';document.getElementById('t').textContent=t}</script></body></html>`));
   let last = 0;
@@ -371,15 +383,15 @@ async function runImport(src) {
       if (now - last < 150) return;
       last = now;
       const pct = p.total ? Math.min(100, (p.done / p.total) * 100) : 0;
-      const label = p.phase === 'copy' ? 'Copiando' : p.phase === 'verify' ? 'Verificando la copia' : 'Comprobando índices';
+      const label = t(p.phase === 'copy' ? 'dlg.copying' : p.phase === 'verify' ? 'dlg.verifying' : 'dlg.checking');
       pw.setProgressBar(pct / 100);
       pw.webContents.executeJavaScript(`set(${pct.toFixed(1)}, ${JSON.stringify(`${label} · ${pct.toFixed(0)} % · ${p.text}`)})`).catch(() => {});
     });
     pw.destroy();
     await dialog.showMessageBox({
-      type: 'info', title: 'PST Explorer', buttons: ['Aceptar'],
-      message: 'Biblioteca importada y verificada',
-      detail: `${info.files} archivo(s) · ${info.messages.toLocaleString('es-CL')} correos. No hace falta volver a indexar.\n\nLa carpeta original sigue intacta en:\n${src}\nCuando compruebes que todo está bien, puedes borrarla desde Biblioteca.`,
+      type: 'info', title: 'PST Explorer', buttons: [t('dlg.ok')],
+      message: t('dlg.imported'),
+      detail: t('dlg.importedDetail', { files: t('dlg.files', { n: info.files }), messages: I.fmtNum(info.messages), dir: src }),
     });
   } catch (e) {
     pw.destroy();
@@ -389,41 +401,59 @@ async function runImport(src) {
 
 // ---------------------------------------------------------------- menú
 
+// nombres de idioma en su propio idioma (no se traducen)
+const LANG_NAMES = { en: 'English', es: 'Español' };
+
 function buildMenu() {
-  const t = [
+  const tpl = [
     {
-      label: 'Archivo',
+      label: t('menu.file'),
       submenu: [
-        { label: 'Abrir carpeta de datos', click: () => shell.openPath(DATA) },
-        { label: 'Abrir registro de errores', click: () => shell.openPath(LOG_DIR) },
+        { label: t('menu.openData'), click: () => shell.openPath(DATA) },
+        { label: t('menu.openLog'), click: () => shell.openPath(LOG_DIR) },
         { type: 'separator' },
-        { label: 'Salir', accelerator: 'Alt+F4', click: quit },
+        { label: t('menu.quit'), accelerator: 'Alt+F4', click: quit },
       ],
     },
     {
-      label: 'Ver',
+      label: t('menu.view'),
       submenu: [
-        { role: 'reload', label: 'Recargar' },
+        { role: 'reload', label: t('menu.reload') },
         { type: 'separator' },
-        { role: 'resetZoom', label: 'Tamaño normal' },
-        { role: 'zoomIn', label: 'Acercar' },
-        { role: 'zoomOut', label: 'Alejar' },
+        { role: 'resetZoom', label: t('menu.resetZoom') },
+        { role: 'zoomIn', label: t('menu.zoomIn') },
+        { role: 'zoomOut', label: t('menu.zoomOut') },
         { type: 'separator' },
-        { role: 'togglefullscreen', label: 'Pantalla completa' },
-        ...(app.isPackaged ? [] : [{ role: 'toggleDevTools', label: 'Herramientas de desarrollo' }]),
+        { role: 'togglefullscreen', label: t('menu.fullscreen') },
+        { type: 'separator' },
+        {
+          label: t('menu.language'),
+          submenu: I.LANGS.map((l) => ({ label: LANG_NAMES[l], type: 'radio', checked: I.getLang() === l, click: () => changeLanguage(l) })),
+        },
+        ...(app.isPackaged ? [] : [{ role: 'toggleDevTools', label: t('menu.devtools') }]),
       ],
     },
     {
-      label: 'Ayuda',
+      label: t('menu.help'),
       submenu: [
-        { label: 'Buscar actualizaciones', enabled: app.isPackaged, click: () => checkUpdates(true) },
-        { label: 'Sitio del proyecto', click: () => shell.openExternal('https://github.com/flpvergara-bit/pst-explorer') },
+        { label: t('menu.updates'), enabled: app.isPackaged, click: () => checkUpdates(true) },
+        { label: t('menu.site'), click: () => shell.openExternal('https://github.com/flpvergara-bit/pst-explorer') },
         { type: 'separator' },
-        { label: `Acerca de PST Explorer ${app.getVersion()}`, click: () => dialog.showMessageBox(...parentWin(), { type: 'info', title: 'PST Explorer', message: `PST Explorer ${app.getVersion()}`, detail: 'Visor y buscador local de archivos PST/OST.\nLicencia MIT.' }) },
+        { label: t('menu.about', { v: app.getVersion() }), click: () => dialog.showMessageBox(...parentWin(), { type: 'info', title: 'PST Explorer', message: `PST Explorer ${app.getVersion()}`, detail: t('menu.aboutDetail') }) },
       ],
     },
   ];
-  return Menu.buildFromTemplate(t);
+  return Menu.buildFromTemplate(tpl);
+}
+
+// Idioma elegido desde el menú: lo guarda el motor (settings.json) y la ventana se recarga
+function changeLanguage(lang) {
+  I.setLang(lang);
+  Menu.setApplicationMenu(buildMenu());
+  updateTray();
+  if (server) server.postMessage({ type: 'lang', lang });
+  else I.saveSettings(DATA, { ...I.loadSettings(DATA), lang });
+  if (win && !win.isDestroyed()) setTimeout(() => win.webContents.reload(), 200);
 }
 
 // ---------------------------------------------------------------- actualizaciones
@@ -450,18 +480,18 @@ async function checkUpdates(manual) {
   try {
     const r = await updater.checkForUpdates();
     if (manual && (!r || !r.updateInfo || r.updateInfo.version === app.getVersion())) {
-      dialog.showMessageBox(...parentWin(), { type: 'info', title: 'PST Explorer', message: 'Tienes la versión más reciente.' });
+      dialog.showMessageBox(...parentWin(), { type: 'info', title: 'PST Explorer', message: t('upd.latest') });
     }
   } catch (e) {
-    if (manual) dialog.showMessageBox(...parentWin(), { type: 'warning', title: 'PST Explorer', message: 'No se pudo buscar actualizaciones.', detail: e.message });
+    if (manual) dialog.showMessageBox(...parentWin(), { type: 'warning', title: 'PST Explorer', message: t('upd.failed'), detail: e.message });
   }
 }
 
 async function offerUpdate() {
   const r = await dialog.showMessageBox(...parentWin(), {
-    type: 'info', title: 'PST Explorer', buttons: ['Reiniciar y actualizar', 'Más tarde'], defaultId: 0, cancelId: 1,
-    message: 'Hay una versión nueva de PST Explorer lista para instalar.',
-    detail: 'Tus índices y tu biblioteca se conservan. Si eliges «Más tarde», se instalará al cerrar la app.',
+    type: 'info', title: 'PST Explorer', buttons: [t('upd.restart'), t('upd.later')], defaultId: 0, cancelId: 1,
+    message: t('upd.ready'),
+    detail: t('upd.readyDetail'),
   });
   if (r.response === 0) {
     quitting = true;

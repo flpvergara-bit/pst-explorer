@@ -1,7 +1,7 @@
 {
   "name": "pst-explorer",
-  "version": "1.2.0",
-  "description": "Visor local para revisar y buscar en varios archivos PST/OST de Outlook: correos, conversaciones, adjuntos, búsqueda de texto completo (incluido el contenido de los adjuntos), impresión y exportación.",
+  "version": "1.3.0",
+  "description": "Local viewer to browse and search several Outlook PST/OST files: emails, conversations, attachments, full-text search (including attachment content), duplicate comparison, printing and export. English and Spanish.",
   "main": "electron/main.js",
   "private": true,
   "license": "MIT",
@@ -100,9 +100,11 @@
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "installerLanguages": [
+        "en_US",
         "es_ES"
       ],
-      "language": "3082",
+      "language": "1033",
+      "multiLanguageInstaller": true,
       "deleteAppDataOnUninstall": false,
       "include": "build/installer.nsh",
       "artifactName": "PST-Explorer-Setup-${version}.${ext}"
