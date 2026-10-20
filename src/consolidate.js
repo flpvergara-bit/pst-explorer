@@ -4,7 +4,7 @@
 // the global conversations and the comparison between files (which emails each
 // one has that are not in another). It runs separately because with
 // hundreds of thousands of emails it takes a few seconds.
-const { openDb, createLibrarySchema, setMeta } = require('./db');
+const { openDb, createLibrarySchema, setMeta, dkeySql } = require('./db');
 
 function run({ libDbPath, files, sig }) {
   const t0 = Date.now();
@@ -16,10 +16,7 @@ function run({ libDbPath, files, sig }) {
   db.exec(`DROP TABLE IF EXISTS temp.allm;
     CREATE TEMP TABLE allm(f INTEGER, id INTEGER, ord INTEGER, dkey TEXT, conv_key TEXT, date INTEGER, att INTEGER, unread INTEGER, sender TEXT);`);
   files.forEach((f, ord) => {
-    db.exec(`INSERT INTO allm SELECT ${f.id}, id, ${ord},
-      CASE WHEN message_id IS NOT NULL AND message_id <> '' THEN 'i:' || message_id
-           WHEN date IS NOT NULL THEN 's:' || IFNULL(subject, '') || '|' || date || '|' || IFNULL(sender_email, sender_name)
-           ELSE 'u:${f.id}:' || id END,
+    db.exec(`INSERT INTO allm SELECT ${f.id}, id, ${ord}, ${dkeySql(f.id)},
       conv_key, date, att_count > 0, is_read = 0, sender_name FROM f${f.id}.messages`);
   });
   db.exec(`CREATE INDEX temp.ix_allm_dkey ON allm(dkey, ord);

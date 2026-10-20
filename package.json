@@ -1,7 +1,7 @@
 {
   "name": "pst-explorer",
-  "version": "1.3.0",
-  "description": "Local viewer to browse and search several Outlook PST/OST files: emails, conversations, attachments, full-text search (including attachment content), duplicate comparison, printing and export. English and Spanish.",
+  "version": "1.4.0",
+  "description": "Local viewer to browse and search several Outlook PST/OST files: emails, conversations, attachments, full-text search (including attachment content), duplicate comparison, consolidated PST without duplicates, printing and export. English and Spanish.",
   "main": "electron/main.js",
   "private": true,
   "license": "MIT",
@@ -79,6 +79,9 @@
       "!**/tests/**"
     ],
     "asar": true,
+    "asarUnpack": [
+      "src/outlook/**"
+    ],
     "win": {
       "target": [
         {

@@ -113,6 +113,18 @@ function parseDay(s, endOfDay) {
   return d.getTime();
 }
 
+// Duplicate key of an email across backups (SQL over a file's messages table):
+// its Message-ID, or subject+date+sender when it has none. strict (used by the
+// consolidated PST export) also requires the same item class and attachment
+// count for items without Message-ID, so two different contacts or notices with
+// the same subject and time are never merged.
+function dkeySql(fid, strict) {
+  const extra = strict ? " || '|' || IFNULL(msg_class, '') || '|' || IFNULL(att_count, 0)" : '';
+  return `CASE WHEN message_id IS NOT NULL AND message_id <> '' THEN 'i:' || message_id
+    WHEN date IS NOT NULL THEN 's:' || IFNULL(subject, '') || '|' || date || '|' || IFNULL(sender_email, sender_name)${extra}
+    ELSE 'u:${Number(fid)}:' || id END`;
+}
+
 // Library database: data that combines several files (duplicate copies across
 // backups and global conversations). Recalculated by consolidate.js.
 function createLibrarySchema(db) {
@@ -132,4 +144,4 @@ function createLibrarySchema(db) {
   `);
 }
 
-module.exports = { openDb, createSchema, createLibrarySchema, getMeta, setMeta, buildFtsQuery, parseDay, SCHEMA_VERSION, ATT_ROWID };
+module.exports = { openDb, createSchema, createLibrarySchema, dkeySql, getMeta, setMeta, buildFtsQuery, parseDay, SCHEMA_VERSION, ATT_ROWID };

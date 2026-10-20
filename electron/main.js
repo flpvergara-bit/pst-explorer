@@ -41,7 +41,7 @@ let updateReady = false;
 // parent window for dialogs, if any (otherwise the dialog opens on its own)
 const parentWin = () => (win && !win.isDestroyed() ? [win] : []);
 const pstArgs = (argv) => argv.filter((a) => /\.(pst|ost)$/i.test(a) && fs.existsSync(a));
-const busy = () => !status.paused && (status.indexing || status.consolidating || status.pending);
+const busy = () => !!status.exporting || (!status.paused && (status.indexing || status.consolidating || status.pending));
 const appUrl = () => `http://localhost:${port}/`;
 
 if (!app.requestSingleInstanceLock()) {
@@ -99,12 +99,15 @@ async function onServerMessage(m) {
     createWindow();
   } else if (m.type === 'status') {
     const wasBusy = busy();
+    const wasExporting = !!status.exporting;
     status = m;
     updateTray();
-    if (status.indexing && blocker == null) blocker = powerSaveBlocker.start('prevent-app-suspension');
-    if (!status.indexing && blocker != null) { powerSaveBlocker.stop(blocker); blocker = null; }
+    const working = status.indexing || status.exporting;
+    if (working && blocker == null) blocker = powerSaveBlocker.start('prevent-app-suspension');
+    if (!working && blocker != null) { powerSaveBlocker.stop(blocker); blocker = null; }
+    if (wasExporting && !status.exporting) notify(t('app.exportDone'), t('app.exportDoneBody'));
     if (wasBusy && !busy() && !status.paused) {
-      notify(t('app.indexDone'), t('app.indexDoneBody'));
+      if (!wasExporting) notify(t('app.indexDone'), t('app.indexDoneBody'));
       // if the window was hidden only to keep indexing, it can close now
       if (!win || win.isDestroyed() || !win.isVisible()) quit();
       else if (updateReady) offerUpdate();
@@ -255,7 +258,8 @@ function createTray() {
 function updateTray() {
   if (!tray) return;
   let tip = 'PST Explorer';
-  if (status.paused && status.pending) tip += ' · ' + t('tray.paused');
+  if (status.exporting) tip += ' · ' + t('tray.exporting', { pct: status.exporting.pct });
+  else if (status.paused && status.pending) tip += ' · ' + t('tray.paused');
   else if (status.job) tip += ' · ' + t(status.job.phase === 'messages' ? 'tray.indexing' : 'tray.attachments', { name: status.job.name.replace(/\.(pst|ost)$/i, ''), pct: status.job.pct });
   else if (status.consolidating) tip += ' · ' + t('tray.consolidating');
   tray.setToolTip(tip);

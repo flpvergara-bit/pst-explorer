@@ -55,10 +55,22 @@ With the **Library** button you add single files or a whole folder (it finds eve
 - **Search across all files at once**. Each result shows which backup it comes from, and the selector next to the search box narrows it to *Current file*, *Current folder* or *Folder and subfolders*.
 - **Emails repeated across backups**: if the same email is in several backups (same message identifier), it is shown once and its details say "Also in: …". To see every copy, tick *Show duplicate copies across backups* in **Filters**.
 - **Compare files** (Library → *Compare files…*, or the **Export** menu): for each PST it shows how many items are not in any other backup (unique information), how many have a copy elsewhere and how many are repeated inside the same file, plus an overlap table between every pair. If a file has nothing unique, it says it can be discarded and which other files must be kept. *View unique* shows only those items in the list, which can then be exported (CSV, .eml, attachments). Duplicate = same message identifier. The app never modifies or deletes the PSTs.
+- **Consolidated PST** (**Export** menu → *Consolidated PST (no duplicates)…*): creates new PST files with everything the chosen backups contain, each item only once (emails, contacts, calendar, tasks and notes, in the same folders). It writes one file per range of years so each stays under Outlook's 50 GB limit, and shows the estimate before starting. Details below.
 - **Conversations across files**: a thread gathers its emails even when they are spread over different backups.
 - **Enabling or disabling** a file (checkbox in the library) includes it in or excludes it from searches without deleting its index. Up to 10 files can be active at once.
 - **Disconnected drive**: if a PST is not available (for example, on an external drive), you can still search its index and see the email details; to open the full body and the attachments, connect the drive.
 - **Damaged items**: if a damaged email crashes the reader, indexing resumes by itself, skips that item and counts it as "unreadable".
+
+## Consolidated PST without duplicates
+
+Turns several overlapping backups into new PST files where every item appears once, without losing anything:
+
+- **Needs classic Outlook** (the desktop app) on Windows. Outlook does the writing, so each item keeps every property: dates, read state, categories, flags, attachments, recurrences, S/MIME.
+- **The backups are never opened or modified.** Outlook works on a temporary copy of each backup, made next to the destination one at a time. Outlook keeps those copies open until it closes, so they are deleted at the end: the destination needs room for the new files plus a copy of every backup. The dialog checks this. The temporary folder of Windows cannot be used: Outlook does not create data files there.
+- **Which copy is kept:** duplicate = same Message-ID; items without one are compared by subject, date, sender, type and number of attachments. For each item the copy with more attachments wins (then the larger one, then the most recent backup), and every copy inside that backup is kept, so an email that is both in *Sent Items* and in the *Inbox* stays in both. Items the index could not read are copied too, without deduplicating.
+- **Outlook profile:** if Outlook is open it is used as is, and the PSTs appear in its folder list while it works; otherwise it starts with your default profile (it may ask you to sign in) and closes at the end. Outlook keeps the files open until it closes, so the last step waits for that: if you have it open, close it to finish.
+- **Verification:** when it finishes, the new files are indexed and every item of the backups is looked for in them. The report says whether anything is missing, lists errors and can add the new files to the library.
+- **Resumable:** you can pause it, close the app or lose power; *Resume* continues where it stopped without repeating or losing items. Indexing waits while an export runs.
 
 ## Features
 
@@ -92,7 +104,7 @@ Shortcuts: `/` or `Ctrl+F` to go to the search box, ↑/↓ to move through the 
 
 - Local Node.js server ([Express](https://expressjs.com)) and a framework-free web UI (`public/`). In the desktop app ([Electron](https://www.electronjs.org), `electron/`), the same server runs as a separate process on a free port, protected with a session token, and the window loads that UI.
 - PST/OST reading with [pst-extractor](https://github.com/epfromer/pst-extractor), plus a page cache and a fix for tables with thousands of recipients (`src/pstcache.js`).
-- One SQLite index with FTS5 full-text search per file (`src/indexer.js`, which runs in a separate process). Queries combine the indexes with `ATTACH` (`src/query.js`) and `src/consolidate.js` finds the copies across backups and builds the file comparison.
+- One SQLite index with FTS5 full-text search per file (`src/indexer.js`, which runs in a separate process). Queries combine the indexes with `ATTACH` (`src/query.js`) and `src/consolidate.js` finds the copies across backups and builds the file comparison. `src/pstexport.js` plans and runs the consolidated PST export, and `src/outlook/pstexport.ps1` drives Outlook through COM to write it.
 - Attachment text: [pdf.js](https://mozilla.github.io/pdf.js/) for PDF and [fflate](https://github.com/101arrowz/fflate) for Word, Excel and PowerPoint.
 - Translations: `public/i18n.js` (web UI) and `src/i18n.js` (server and desktop app), in English and Spanish.
 - Security: each email body is shown in an isolated iframe with a content security policy (CSP) that blocks scripts and external images, and the server rejects requests from other origins.

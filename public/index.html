@@ -51,6 +51,7 @@
         <hr>
         <button data-act="library" data-i18n="menu.library">File library…</button>
         <button data-act="compare" data-i18n="menu.compare">Compare files (duplicates)…</button>
+        <button data-act="pstexport" data-i18n="menu.pstexport">Consolidated PST (no duplicates)…</button>
         <button data-act="pause" id="menuPause" data-i18n="menu.pause">Pause indexing</button>
       </div>
     </div>
@@ -175,6 +176,20 @@
         <button type="button" id="btnCmpRefresh" class="btn" data-i18n="cmp.recalc">Recalculate</button>
       </div>
       <p class="muted small-note" data-i18n-html="cmp.note"></p>
+    </form>
+  </dialog>
+
+  <dialog id="pstDlg" class="dlg wide">
+    <form method="dialog" class="dlg-inner">
+      <header><h3 data-i18n="pstx.title">Consolidated PST</h3><button class="btn ghost icon" value="cancel" data-i18n-title="lib.close">✕</button></header>
+      <p class="muted cmp-intro" data-i18n="pstx.intro"></p>
+      <p id="pstMsg" class="lib-msg" hidden></p>
+      <div id="pstBody"></div>
+      <div class="lib-foot">
+        <span id="pstSummary" class="muted"></span>
+        <span id="pstBtns" class="lib-foot-btns"></span>
+      </div>
+      <p class="muted small-note" data-i18n-html="pstx.note"></p>
     </form>
   </dialog>
 
