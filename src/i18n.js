@@ -86,26 +86,6 @@ const S = {
     'tray.pause': 'Pause indexing',
     'tray.resume': 'Resume indexing',
     'tray.quit': 'Quit',
-    'tray.exporting': 'Exporting consolidated PST · {pct}%',
-    'app.exportDone': 'Consolidated PST finished',
-    'app.exportDoneBody': 'Open PST Explorer to see the verification report.',
-    // consolidated PST export
-    'pstx.fileName': 'Consolidated {range}',
-    'pstx.workDir': '_PST Explorer temp',
-    'pstx.err.noFiles': 'Choose at least one file.',
-    'pstx.err.notIndexed': '{name} has not finished indexing.',
-    'pstx.err.running': 'An export is already running.',
-    'pstx.err.pending': 'There is an unfinished export: resume it or discard it first.',
-    'pstx.err.tempDir': 'Outlook cannot create data files inside the temporary folder. Choose another folder.',
-    'pstx.err.windowsOnly': 'Only available on Windows with Outlook installed.',
-    'pstx.err.outlookMissing': 'Classic Outlook (desktop) is not installed. It is needed to write PST files.',
-    'pstx.err.outlookTimeout': 'Outlook did not respond. It may be waiting for you (sign-in or a dialog): check its window and resume the export.',
-    'pstx.err.outlookError': 'Outlook error: {msg}',
-    'pstx.err.sourceMissing': 'The file is not available: {path}. Connect its drive and resume.',
-    'pstx.err.outExists': 'The file already exists: {path}. Choose another folder or move it.',
-    'pstx.err.locked': 'The temporary copy is still in use: {path}. Close Outlook and resume.',
-    'pstx.err.canceled': 'Export paused. It can be resumed where it stopped.',
-    'pstx.err.verifyFailed': 'Could not read the new file to verify it: {path}',
     // desktop: dialogs
     'dlg.addFiles': 'Add Outlook data files',
     'dlg.outlookFiles': 'Outlook files',
@@ -230,25 +210,6 @@ const S = {
     'tray.pause': 'Pausar indexado',
     'tray.resume': 'Reanudar indexado',
     'tray.quit': 'Salir',
-    'tray.exporting': 'Exportando PST consolidado · {pct} %',
-    'app.exportDone': 'PST consolidado terminado',
-    'app.exportDoneBody': 'Abre PST Explorer para ver el informe de verificación.',
-    'pstx.fileName': 'Consolidado {range}',
-    'pstx.workDir': '_PST Explorer temporal',
-    'pstx.err.noFiles': 'Elige al menos un archivo.',
-    'pstx.err.notIndexed': '{name} no ha terminado de indexarse.',
-    'pstx.err.running': 'Ya hay una exportación en curso.',
-    'pstx.err.pending': 'Hay una exportación sin terminar: reanúdala o descártala primero.',
-    'pstx.err.tempDir': 'Outlook no puede crear archivos de datos dentro de la carpeta temporal. Elige otra carpeta.',
-    'pstx.err.windowsOnly': 'Solo disponible en Windows con Outlook instalado.',
-    'pstx.err.outlookMissing': 'Outlook clásico (de escritorio) no está instalado. Se necesita para escribir archivos PST.',
-    'pstx.err.outlookTimeout': 'Outlook no respondió. Puede que esté esperándote (inicio de sesión o un diálogo): revisa su ventana y reanuda la exportación.',
-    'pstx.err.outlookError': 'Error de Outlook: {msg}',
-    'pstx.err.sourceMissing': 'El archivo no está disponible: {path}. Conecta su disco y reanuda.',
-    'pstx.err.outExists': 'El archivo ya existe: {path}. Elige otra carpeta o muévelo.',
-    'pstx.err.locked': 'La copia temporal sigue en uso: {path}. Cierra Outlook y reanuda.',
-    'pstx.err.canceled': 'Exportación en pausa. Se puede reanudar donde quedó.',
-    'pstx.err.verifyFailed': 'No se pudo leer el archivo nuevo para verificarlo: {path}',
     'dlg.addFiles': 'Agregar archivos de datos de Outlook',
     'dlg.outlookFiles': 'Archivos de Outlook',
     'dlg.allFiles': 'Todos los archivos',
@@ -327,8 +288,6 @@ const fmtNum = (n, lang = current) => Number(n || 0).toLocaleString(LOCALE[norm(
 // Error with translated text and HTTP status
 const err = (status, key, vars) => Object.assign(new Error(t(key, vars)), { status });
 
-const has = (key) => S[DEFAULT_LANG][key] !== undefined;
-
 const setLang = (l) => { current = norm(l); return current; };
 const getLang = () => current;
 const locale = (lang = current) => LOCALE[norm(lang)];
@@ -348,4 +307,4 @@ function saveSettings(dataDir, s) {
   fs.renameSync(p + '.tmp', p);
 }
 
-module.exports = { t, has, err, fmtNum, setLang, getLang, locale, loadSettings, saveSettings, LANGS, DEFAULT_LANG };
+module.exports = { t, err, fmtNum, setLang, getLang, locale, loadSettings, saveSettings, LANGS, DEFAULT_LANG };

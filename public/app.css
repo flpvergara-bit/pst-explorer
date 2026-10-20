@@ -319,14 +319,6 @@ details summary { cursor: pointer; margin-top: 14px; color: var(--accent); }
 .small-note { font-size: 11px; margin-top: 12px; }
 .lib-foot-btns { display: flex; gap: 6px; flex: none; }
 
-/* ---------- consolidated PST ---------- */
-#pstDlg { width: min(760px, 97vw); }
-.pst-files { display: flex; flex-direction: column; gap: 4px; max-height: 26vh; overflow: auto; }
-.pst-file { display: flex; align-items: baseline; gap: 6px; cursor: pointer; }
-.pst-file.off { opacity: .55; cursor: default; }
-.pst-outs { margin: 4px 0; padding-left: 18px; }
-.pst-progress .pbar { height: 8px; margin: 8px 0; }
-
 /* ---------- compare files ---------- */
 #cmpDlg { width: min(1240px, 97vw); }
 .cmp-intro { margin: 6px 0 0; }

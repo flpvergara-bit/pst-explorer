@@ -1060,7 +1060,6 @@ $('#menu').addEventListener('click', async (e) => {
   const act = b.dataset.act;
   if (act === 'library') return showLibrary();
   if (act === 'compare') return showCompare();
-  if (act === 'pstexport') return showPstExport();
   if (act === 'pause') return togglePause();
   const p = filterParams({ forExport: true });
   // exports are based on emails, not on conversations or files
@@ -1164,24 +1163,25 @@ function renderLibrary() {
 }
 
 $('#libList').addEventListener('click', async (e) => {
-  const t = e.target;
+  // not 't': that name is the translation function
+  const el = e.target;
   try {
-    if (t.dataset.enable) {
-      await api('/api/library/enable', { id: Number(t.dataset.enable), enabled: t.checked });
+    if (el.dataset.enable) {
+      await api('/api/library/enable', { id: Number(el.dataset.enable), enabled: el.checked });
       afterLibraryChange();
-    } else if (t.dataset.remove) {
-      const f = state.lib.files.find((x) => x.id === Number(t.dataset.remove));
+    } else if (el.dataset.remove) {
+      const f = state.lib.files.find((x) => x.id === Number(el.dataset.remove));
       if (!confirm(t('lib.confirmRemove', { name: f.name }))) return;
       const del = confirm(t('lib.confirmDeleteIndex'));
       await api('/api/library/remove', { id: f.id, deleteIndex: del });
       afterLibraryChange();
-    } else if (t.dataset.reindex) {
-      const f = state.lib.files.find((x) => x.id === Number(t.dataset.reindex));
+    } else if (el.dataset.reindex) {
+      const f = state.lib.files.find((x) => x.id === Number(el.dataset.reindex));
       if (!confirm(t('lib.confirmReindex', { name: f.name }))) return;
       await api('/api/library/reindex', { id: f.id });
       afterLibraryChange();
-    } else if (t.dataset.retry) {
-      await api('/api/library/retry', { id: Number(t.dataset.retry) });
+    } else if (el.dataset.retry) {
+      await api('/api/library/retry', { id: Number(el.dataset.retry) });
       refreshState();
     }
   } catch (err) {
@@ -1398,220 +1398,6 @@ $('#cmpBody').addEventListener('click', (e) => {
   vlist.load();
 });
 
-// ------------------------------------------------------------------ consolidated PST
-
-// New PSTs with everything the backups contain, each item once (written by Outlook).
-const PX = { timer: 0, sel: null, plan: null, planSig: '', dir: LS.get('pstDir', ''), free: null, setup: false };
-
-function showPstExport() {
-  PX.setup = false;
-  if (!$('#pstDlg').open) $('#pstDlg').showModal();
-  renderPst();
-}
-$('#pstDlg').addEventListener('close', () => clearTimeout(PX.timer));
-
-function pstMsg(text, isErr) {
-  const m = $('#pstMsg');
-  m.textContent = text || '';
-  m.className = 'lib-msg' + (isErr ? ' err' : '');
-  m.hidden = !text;
-}
-
-async function renderPst() {
-  clearTimeout(PX.timer);
-  let st;
-  try { st = await api('/api/export/pst'); } catch (e) { return pstMsg(e.message, true); }
-  if (!$('#pstDlg').open) return;
-  const job = st.job;
-  pstMsg(st.error ? st.error.message : '', !!st.error && st.error.code !== 'canceled');
-  if (st.running) renderPstProgress(st.progress || {}, job);
-  else if (job && job.state !== 'done') renderPstPaused(job);
-  else if (job && !PX.setup) renderPstReport(job);
-  else renderPstSetup();
-  if (st.running) PX.timer = setTimeout(renderPst, 1500);
-}
-
-function renderPstSetup() {
-  const files = state.lib ? state.lib.files : [];
-  if (PX.sel == null) PX.sel = new Set(files.filter((f) => f.status.complete && f.exists).map((f) => f.id));
-  const rows = files.map((f) => {
-    const ok = f.status.complete && f.exists;
-    const note = !f.exists ? t('pstx.unavailable') : !f.status.complete ? t('pstx.notIndexed') : '';
-    return `<label class="pst-file${ok ? '' : ' off'}"><input type="checkbox" data-f="${f.id}" ${ok && PX.sel.has(f.id) ? 'checked' : ''} ${ok ? '' : 'disabled'}>
-      <b>${esc(shortName(f.name))}</b> <span class="muted">${fmtSize(f.size)}${note ? ' · ' + esc(note) : ''}</span></label>`;
-  }).join('');
-  $('#pstBody').innerHTML = `<h4>${t('pstx.files')}</h4><div class="pst-files">${rows || `<div class="muted">${t('cmp.emptyLib')}</div>`}</div>
-    <h4>${t('pstx.result')}</h4><div id="pstPlan" class="muted">${t('pstx.calculating')}</div>
-    <h4>${t('pstx.dest')}</h4>
-    <div class="open-row"><input id="pstDir" value="${esc(PX.dir)}" data-i18n-ph="pstx.destPh" placeholder="${esc(t('pstx.destPh'))}">
-      <button type="button" id="pstPick" class="btn">${t('pstx.choose')}</button></div>
-    <div id="pstSpace" class="muted small-note"></div>`;
-  $('#pstBtns').innerHTML = `<button type="button" id="pstStart" class="btn primary" disabled>${t('pstx.start')}</button>`;
-  $('#pstSummary').textContent = '';
-  updatePstPlan();
-  updatePstSpace();
-}
-
-async function updatePstPlan() {
-  const ids = [...PX.sel];
-  const sig = ids.join(',');
-  if (sig !== PX.planSig) {
-    PX.planSig = sig;
-    PX.plan = null;
-    if (!ids.length) { $('#pstPlan').textContent = t('pstx.noneSelected'); return pstReady(); }
-    $('#pstPlan').textContent = t('pstx.calculating');
-    pstReady();
-    try {
-      const plan = await api('/api/export/pst/plan', { files: ids });
-      if (PX.planSig !== sig) return;
-      PX.plan = plan;
-    } catch (e) {
-      if (PX.planSig === sig) $('#pstPlan').innerHTML = `<span class="err">${esc(e.message)}</span>`;
-      return;
-    }
-  }
-  const p = PX.plan;
-  if (!p || !$('#pstPlan')) return;
-  const outs = p.buckets.map((b) => `<li><b>${esc(p.fileName.replace('{range}', b.key))}.pst</b> · ${esc(t('cmp.items', { n: b.n }))} · ~${fmtSize(b.estBytes)}</li>`).join('');
-  let outlook = '';
-  if (!p.outlook.ok) outlook = `<p class="err">${esc(t('pstx.outlook.' + p.outlook.reason))}</p>`;
-  else if (p.outlook.running) outlook = `<p class="muted">${esc(t('pstx.outlook.open'))}</p>`;
-  $('#pstPlan').innerHTML = `<p>${t('pstx.planText', { items: fmtNum(p.items), source: fmtNum(p.sourceItems), dups: fmtNum(p.sourceItems - p.items) })}</p>
-    <ul class="pst-outs">${outs}</ul>${outlook}`;
-  updatePstSpace();
-  pstReady();
-}
-
-const pstNeeded = () => (PX.plan ? PX.plan.buckets.reduce((s, b) => s + b.estBytes, 0) + PX.plan.sourceTotal : 0);
-
-async function updatePstSpace() {
-  const box = $('#pstSpace');
-  if (!box) return;
-  PX.free = null;
-  if (PX.dir) {
-    try { PX.free = (await api('/api/export/pst/space', { dir: PX.dir })).free; } catch (e) { box.innerHTML = `<span class="err">${esc(e.message)}</span>`; return pstReady(); }
-  }
-  const need = pstNeeded();
-  box.innerHTML = PX.free == null ? esc(t('pstx.destHint')) : `${esc(t('pstx.space', { free: fmtSize(PX.free), need: need ? '~' + fmtSize(need) : '…' }))}${
-    need && PX.free < need ? ` <span class="err">${esc(t('pstx.noSpace'))}</span>` : ''}`;
-  pstReady();
-}
-
-function pstReady() {
-  const b = $('#pstStart');
-  if (b) b.disabled = !(PX.plan && PX.plan.outlook.ok && PX.plan.items && PX.dir && PX.free != null && PX.free >= pstNeeded());
-}
-
-$('#pstBody').addEventListener('change', (e) => {
-  const cb = e.target.closest('input[data-f]');
-  if (cb) {
-    if (cb.checked) PX.sel.add(Number(cb.dataset.f)); else PX.sel.delete(Number(cb.dataset.f));
-    clearTimeout(PX.planT);
-    PX.planT = setTimeout(updatePstPlan, 400);
-  }
-  if (e.target.id === 'pstDir') {
-    PX.dir = e.target.value.trim();
-    LS.set('pstDir', PX.dir);
-    updatePstSpace();
-  }
-});
-
-$('#pstDlg').addEventListener('click', async (e) => {
-  const b = e.target.closest('button[id^=pst]');
-  if (!b) return;
-  try {
-    if (b.id === 'pstPick') {
-      const dir = desktop ? await desktop.pickFolder() : (await api('/api/library/pick', { mode: 'folder' })).dir;
-      if (!dir) return;
-      PX.dir = dir;
-      LS.set('pstDir', dir);
-      $('#pstDir').value = dir;
-      updatePstSpace();
-    } else if (b.id === 'pstStart') {
-      b.disabled = true;
-      await api('/api/export/pst/start', { files: [...PX.sel], outDir: PX.dir });
-      PX.setup = false;
-      renderPst();
-      refreshState();
-    } else if (b.id === 'pstPause') {
-      await api('/api/export/pst/cancel', {});
-      b.disabled = true;
-    } else if (b.id === 'pstResume') {
-      await api('/api/export/pst/resume', {});
-      renderPst();
-      refreshState();
-    } else if (b.id === 'pstDiscard') {
-      if (!confirm(t('pstx.discardConfirm'))) return;
-      await api('/api/export/pst/clear', {});
-      PX.setup = true;
-      renderPst();
-    } else if (b.id === 'pstNew') {
-      PX.setup = true;
-      PX.planSig = '';
-      renderPst();
-    } else if (b.id === 'pstAddLib') {
-      const r = await api('/api/library/add', { paths: JSON.parse(b.dataset.paths) });
-      toast(t('pstx.added', { n: r.added.length }));
-      afterLibraryChange();
-    }
-  } catch (err) {
-    pstMsg(err.message, true);
-    renderPst();
-  }
-});
-
-function renderPstProgress(p, job) {
-  const pct = p.total ? (p.done / p.total) * 100 : 0;
-  let phase = t('pstx.phase.' + (p.phase || 'starting'), { file: shortName(p.file || '') });
-  if (p.phase === 'copy' && p.bytesTotal) phase += ` · ${Math.floor((p.bytes / p.bytesTotal) * 100)}%`;
-  if (p.phase === 'verify' && p.total && p.file) phase = t('pstx.phase.verify', { file: shortName(p.file) });
-  const items = p.phase === 'verify' ? '' : t('pstx.progressItems', { done: fmtNum(p.done || 0), total: fmtNum(p.total || 0) });
-  $('#pstBody').innerHTML = `<div class="pst-progress"><p><b>${esc(phase)}</b></p>
-    <div class="pbar"><div style="width:${p.phase === 'verify' ? 100 : pct.toFixed(1)}%"></div></div>
-    <p class="muted">${esc(items)}</p>
-    ${p.phase === 'waitOutlook' ? `<p class="lib-msg">${esc(t('pstx.waitOutlookHelp'))}</p>` : ''}
-    ${job ? `<p class="muted small-note">${esc(t('pstx.to', { dir: job.outDir }))}</p>` : ''}</div>`;
-  $('#pstBtns').innerHTML = `<button type="button" id="pstPause" class="btn">${t('pstx.pause')}</button>`;
-  $('#pstSummary').textContent = t('pstx.runningNote');
-}
-
-function renderPstPaused(job) {
-  const pct = job.total ? Math.floor((job.done / job.total) * 100) : 0;
-  $('#pstBody').innerHTML = `<div class="pst-progress"><p><b>${esc(t('pstx.paused'))}</b></p>
-    <div class="pbar"><div style="width:${pct}%"></div></div>
-    <p class="muted">${esc(t('pstx.progressItems', { done: fmtNum(job.done), total: fmtNum(job.total) }))}</p>
-    <p class="muted small-note">${esc(t('pstx.to', { dir: job.outDir }))}</p></div>`;
-  $('#pstBtns').innerHTML = `<button type="button" id="pstDiscard" class="btn">${t('pstx.discard')}</button>
-    <button type="button" id="pstResume" class="btn primary">${t('pstx.resume')}</button>`;
-  $('#pstSummary').textContent = '';
-}
-
-function renderPstReport(job) {
-  const r = job.report || {};
-  const ok = r.missing === 0 && !r.failed && !r.extraFailed;
-  const outs = (r.outputs || []).map((o) => `<tr><td title="${esc(o.path)}"><b>${esc(o.path.split(/[\\/]/).pop())}</b></td>
-    <td class="num">${fmtNum(o.items)}</td><td class="num">${fmtSize(o.bytes)}</td></tr>`).join('');
-  const lines = [
-    t('pstx.rep.moved', { moved: fmtNum(r.moved || 0), planned: fmtNum(r.planned || 0) }),
-    r.extraMoved ? t('pstx.rep.extra', { n: fmtNum(r.extraMoved) }) : '',
-    r.failed || r.extraFailed ? t('pstx.rep.failed', { n: fmtNum((r.failed || 0) + (r.extraFailed || 0)) }) : '',
-  ].filter(Boolean).map((l) => `<li>${esc(l)}</li>`).join('');
-  const missing = (r.samples || []).map((s) => `<li>${esc(shortName(s.file || ''))} · ${esc(s.folder || '')} · ${esc(fmtShort(s.date))} · <b>${esc(s.subject || t('row.noSubject'))}</b></li>`).join('');
-  const failures = (r.failures || []).map((f) => `<li>${esc(shortName(f.file))} #${f.nid}: ${esc(f.err || '')}</li>`).join('');
-  $('#pstBody').innerHTML = `<p>${ok ? `<span class="tag ok">${t('pstx.rep.okTag')}</span> ${esc(t('pstx.rep.ok'))}`
-    : `<span class="tag warn">${t('pstx.rep.checkTag')}</span> ${esc(t('pstx.rep.missing', { n: fmtNum(r.missing || 0) }))}`}</p>
-    <div class="cmp-wrap"><table class="cmp-table"><thead><tr><th>${t('pstx.rep.file')}</th><th class="num">${t('cmp.col.items')}</th><th class="num">${t('pstx.rep.size')}</th></tr></thead>
-    <tbody>${outs}</tbody></table></div>
-    <ul>${lines}</ul>
-    ${missing ? `<h4>${t('pstx.rep.missingList')}</h4><ul class="small-note">${missing}</ul>` : ''}
-    ${failures ? `<h4>${t('pstx.rep.failures')}</h4><ul class="small-note">${failures}</ul>` : ''}
-    <p class="muted small-note">${esc(t('pstx.rep.next'))}</p>`;
-  const paths = (r.outputs || []).map((o) => o.path);
-  $('#pstBtns').innerHTML = `<button type="button" id="pstNew" class="btn">${t('pstx.new')}</button>
-    <button type="button" id="pstAddLib" class="btn primary" data-paths="${esc(JSON.stringify(paths))}">${t('pstx.addLib')}</button>`;
-  $('#pstSummary').textContent = job.finishedAt ? t('pstx.finished', { date: fmtLong(Date.parse(job.finishedAt)) }) : '';
-}
-
 // ------------------------------------------------------------------ state and indexing
 
 let pollTimer = 0;
@@ -1635,9 +1421,6 @@ function headerProgress(s) {
       pct = j.attTotal ? (j.attDone / j.attTotal) * 100 : 0;
       text = t('prog.attachments', { name: job.name, pos, count: n, pct: pct.toFixed(0), eta: fmtEta(j.eta) });
     }
-  } else if (s.exporting) {
-    pct = s.exporting.total ? (s.exporting.done / s.exporting.total) * 100 : 0;
-    text = t('prog.exporting', { pct: pct.toFixed(0) });
   } else if (s.paused && s.files.some((f) => f.enabled && !f.status.attComplete)) text = t('prog.paused');
   else if (s.consolidating) text = t('prog.consolidating');
   else text = t('prog.ready', { files: t('lib.files', { n: s.files.filter((f) => f.active).length }), messages: fmtNum(s.totals.messages) });
@@ -1661,7 +1444,7 @@ async function refreshState(force = false) {
   if ($('#libDlg').open) renderLibrary();
   // signature: which files are active and how much they have indexed
   const sig = s.files.map((f) => `${f.id}:${f.active}:${f.status.indexed}:${f.status.complete}:${f.job ? f.job.done : ''}`).join('|') + (s.consolidating ? 'c' : '');
-  const busy = s.indexing || s.consolidating || s.exporting;
+  const busy = s.indexing || s.consolidating;
   const now = Date.now();
   if (force || (sig !== lastSig && (now - lastRefresh > 5000 || !busy))) {
     lastSig = sig;

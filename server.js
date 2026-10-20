@@ -6,7 +6,6 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { execFile, fork } = require('child_process');
-const { DatabaseSync } = require('node:sqlite');
 const express = require('express');
 const { ZipArchive } = require('archiver');
 const MailComposer = require('nodemailer/lib/mail-composer');
@@ -75,7 +74,7 @@ function fileStatus(f) {
 }
 
 function schedule() {
-  if (J.child || lib.paused || X.child) return;
+  if (J.child || lib.paused) return;
   const cands = lib.files.filter((f) => f.enabled && !J.failed.has(f.id) && lib.exists(f));
   const st = new Map(cands.map((f) => [f.id, fileStatus(f)]));
   // first the emails of all files (smallest to largest), then the attachment content
@@ -491,7 +490,6 @@ app.get('/api/state', wrap(async (req, res) => {
     indexing: !!J.job,
     consolidating: !!J.consolidating,
     lastConsolidation: J.lastConsolidation,
-    exporting: X.child ? X.progress || {} : null,
     totals: { messages: files.filter((f) => f.active).reduce((s, f) => s + f.status.indexed, 0) },
     maxActive: MAX_ACTIVE,
     desktop: DESKTOP,
@@ -892,134 +890,6 @@ app.get('/api/export/eml.zip', wrap(async (req, res) => {
   await z.zip.finalize();
 }));
 
-// ================================================================ consolidated PST export
-
-// New PSTs with everything the chosen backups contain, each item once (see
-// src/pstexport.js). It needs classic Outlook; indexing waits while it runs.
-const EXPORT_DIR = path.join(DATA_DIR, 'export');
-const JOB_DB = path.join(EXPORT_DIR, 'job.db');
-const X = { child: null, progress: null, error: null };
-
-function forkExport(msg, onMessage) {
-  const child = fork(path.join(__dirname, 'src', 'pstexport.js'), [], {
-    stdio: ['ignore', 'inherit', 'inherit', 'ipc'], execArgv: ['--max-old-space-size=4096'], env: CHILD_ENV,
-  });
-  child.on('message', onMessage);
-  child.send(msg);
-  return child;
-}
-
-const exportError = (m) => ({ code: m.code, message: I.has(`pstx.err.${m.code}`) ? t(`pstx.err.${m.code}`, { path: m.path || '', msg: m.msg || '' }) : m.msg || m.code });
-
-function exportJob() {
-  if (!fs.existsSync(JOB_DB)) return null;
-  let db;
-  try {
-    db = new DatabaseSync(JOB_DB, { readOnly: true });
-    const meta = Object.fromEntries(db.prepare('SELECT k, v FROM meta').all().map((r) => [r.k, r.v]));
-    const json = (k) => (meta[k] ? JSON.parse(meta[k]) : null);
-    const cfg = json('config') || {};
-    return {
-      state: meta.state, createdAt: meta.createdAt, finishedAt: meta.finishedAt || null, outDir: cfg.outDir,
-      summary: json('summary'), report: json('report'),
-      files: db.prepare('SELECT f AS id, name, state FROM files ORDER BY ord').all(),
-      buckets: db.prepare('SELECT key, path, n, est FROM buckets ORDER BY y_from').all(),
-      done: db.prepare('SELECT COUNT(*) n FROM items WHERE state IN (1, 3)').get().n,
-      total: db.prepare('SELECT COUNT(*) n FROM items').get().n,
-    };
-  } catch {
-    return null;
-  } finally {
-    if (db) db.close();
-  }
-}
-
-function exportFiles(ids) {
-  const files = (Array.isArray(ids) ? ids : []).map((id) => lib.byId(id)).filter(Boolean);
-  if (!files.length) throw httpError(400, t('pstx.err.noFiles'));
-  for (const f of files) {
-    if (!fileStatus(f).complete) throw httpError(400, t('pstx.err.notIndexed', { name: f.name }));
-  }
-  return files.map((f) => ({ id: f.id, name: f.name, path: f.path, size: f.size, dbPath: lib.dbPath(f) }));
-}
-
-function startExport(msg) {
-  stopJob(); // indexing waits (both read the backups)
-  X.error = null;
-  X.progress = { phase: 'starting' };
-  const child = forkExport(msg, (m) => {
-    if (m.type === 'progress') X.progress = m;
-    else if (m.type === 'error') X.error = exportError(m);
-  });
-  X.child = child;
-  child.on('exit', () => {
-    if (X.child !== child) return;
-    X.child = null;
-    X.progress = null;
-    schedule();
-  });
-}
-
-app.get('/api/export/pst', wrap(async (req, res) => {
-  res.json({ running: !!X.child, progress: X.progress, error: X.error, job: exportJob() });
-}));
-
-// Estimate before exporting: items, resulting files and their size, Outlook
-app.post('/api/export/pst/plan', wrap(async (req, res) => {
-  const files = exportFiles(req.body.files);
-  const r = await new Promise((resolve) => {
-    forkExport({ type: 'plan', files }, (m) => resolve(m));
-  });
-  if (r.type === 'error') throw httpError(500, exportError(r).message);
-  // Outlook keeps the temporary copies open until it closes: they may all exist at the end
-  const sourceTotal = files.reduce((s, f) => s + f.size, 0);
-  res.json({ ...r.plan, outlook: r.outlook, sourceTotal, fileName: t('pstx.fileName') });
-}));
-
-app.post('/api/export/pst/space', wrap(async (req, res) => {
-  const dir = String(req.body.dir || '');
-  if (!dir || !fs.existsSync(dir)) throw httpError(400, t('err.noFolder'));
-  const st = fs.statfsSync(dir);
-  res.json({ free: st.bavail * st.bsize });
-}));
-
-app.post('/api/export/pst/start', wrap(async (req, res) => {
-  if (X.child) throw httpError(409, t('pstx.err.running'));
-  const files = exportFiles(req.body.files);
-  const outDir = path.resolve(String(req.body.outDir || ''));
-  if (!req.body.outDir || !fs.existsSync(outDir)) throw httpError(400, t('err.noFolder'));
-  // Outlook does not create data files inside the temporary folder
-  if (outDir.toLowerCase().startsWith(require('os').tmpdir().toLowerCase())) throw httpError(400, t('pstx.err.tempDir'));
-  const job = exportJob();
-  if (job && job.state !== 'done') throw httpError(409, t('pstx.err.pending'));
-  startExport({
-    type: 'run', jobDbPath: JOB_DB,
-    cfg: { files, outDir, workName: t('pstx.workDir'), fileName: t('pstx.fileName'), dataDir: DATA_DIR },
-  });
-  res.json({ ok: true });
-}));
-
-app.post('/api/export/pst/resume', wrap(async (req, res) => {
-  if (X.child) throw httpError(409, t('pstx.err.running'));
-  if (!exportJob()) throw httpError(404, t('err.notFound'));
-  startExport({ type: 'run', jobDbPath: JOB_DB, cfg: null });
-  res.json({ ok: true });
-}));
-
-app.post('/api/export/pst/cancel', wrap(async (req, res) => {
-  if (X.child) X.child.send({ type: 'cancel' });
-  res.json({ ok: true });
-}));
-
-// Forget the export (the PSTs it created are not touched)
-app.post('/api/export/pst/clear', wrap(async (req, res) => {
-  if (X.child) throw httpError(409, t('pstx.err.running'));
-  fs.rmSync(EXPORT_DIR + path.sep + 'verify', { recursive: true, force: true });
-  for (const x of [JOB_DB, JOB_DB + '-wal', JOB_DB + '-shm']) fs.rmSync(x, { force: true });
-  X.error = null;
-  res.json({ ok: true });
-}));
-
 // ================================================================ printing
 
 app.get('/print', wrap(async (req, res) => {
@@ -1101,7 +971,6 @@ function trayStatus() {
     paused: lib.paused,
     pending: lib.files.some((f) => f.enabled && lib.exists(f) && !J.failed.has(f.id) && !fileStatus(f).attComplete),
     job: job ? { name: job.name, phase: J.job.phase, pct: Math.round(pct) } : null,
-    exporting: X.child ? { pct: X.progress && X.progress.total ? Math.round((X.progress.done / X.progress.total) * 100) : 0 } : null,
   };
 }
 
@@ -1131,8 +1000,6 @@ if (DESKTOP) {
       addInitialFiles(m.paths || []);
     } else if (m.type === 'shutdown') {
       stopJob();
-      // the export resumes where it stopped (Outlook detaches its PSTs when it closes)
-      if (X.child) X.child.send({ type: 'cancel' });
       process.exit(0);
     }
     toMain(trayStatus());
