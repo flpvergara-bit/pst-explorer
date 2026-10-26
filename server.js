@@ -141,25 +141,22 @@ function startJob(f, phase, careful) {
   });
 }
 
-// Resolves when the indexer has exited and released its index
+// Resolves when the process has exited and released the indexes it had open
+const killAndWait = (c) => new Promise((resolve) => { c.once('exit', resolve); c.kill(); });
+
 function stopJob(fileId) {
-  if (!J.child || (fileId != null && J.job && J.job.fileId !== fileId)) return Promise.resolve(false);
+  if (!J.child || (fileId != null && J.job && J.job.fileId !== fileId)) return Promise.resolve();
   const c = J.child;
   J.child = null;
   J.job = null;
-  const exited = new Promise((resolve) => c.once('exit', () => resolve(true)));
-  c.kill();
-  return exited;
+  return killAndWait(c);
 }
 
 // Before deleting an index: the consolidation keeps the active ones attached
 function stopConsolidation() {
-  const c = J.consolidating && J.consolidating.child;
-  if (!c) return Promise.resolve();
+  if (!J.consolidating) return Promise.resolve();
   J.consolidatePending = false; // libraryChanged starts it again
-  const exited = new Promise((resolve) => c.once('exit', resolve));
-  c.kill();
-  return exited;
+  return killAndWait(J.consolidating.child);
 }
 
 // Consolidation: duplicate copies across backups and global conversations
@@ -535,8 +532,7 @@ app.post('/api/library/add-folder', wrap(async (req, res) => {
 app.post('/api/library/remove', wrap(async (req, res) => {
   const id = Number(req.body.id);
   const deleteIndex = !!req.body.deleteIndex;
-  await stopJob(id);
-  if (deleteIndex) await stopConsolidation();
+  await Promise.all([stopJob(id), deleteIndex && stopConsolidation()]);
   readers.close(id);
   let removed;
   try { removed = lib.remove(id, deleteIndex); } finally { libraryChanged(); }
@@ -559,14 +555,11 @@ app.post('/api/library/reindex', wrap(async (req, res) => {
   const f = lib.byId(req.body.id);
   if (!f) throw httpError(404, t('err.notFound'));
   // without the PST the index could not be rebuilt: keep it searchable
-  if (!lib.exists(f)) throw httpError(409, t('err.unavailable', { path: f.path }));
-  await stopJob(f.id);
-  await stopConsolidation();
+  if (!lib.exists(f)) throw httpError(410, t('err.unavailable', { path: f.path }));
+  await Promise.all([stopJob(f.id), stopConsolidation()]);
   readers.close(f.id);
   J.failed.delete(f.id);
   J.restarts.delete(f.id);
-  lib.conn.close(); // release the index so it can be deleted
-  lib.conn = null;
   try { lib.resetIndex(f); } finally { libraryChanged(); }
   res.json({ ok: true });
 }));

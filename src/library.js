@@ -112,6 +112,8 @@ class Library {
   }
 
   resetIndex(f) {
+    this.conn.close(); // release the index so it can be deleted (reconnect reopens it)
+    this.conn = null;
     removeDb(this.dbPath(f));
     const db = D.openDb(this.dbPath(f));
     D.createSchema(db);
