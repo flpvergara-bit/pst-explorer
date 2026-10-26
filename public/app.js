@@ -1171,12 +1171,14 @@ $('#libList').addEventListener('click', async (e) => {
       afterLibraryChange();
     } else if (el.dataset.remove) {
       const f = state.lib.files.find((x) => x.id === Number(el.dataset.remove));
+      if (!f) return refreshState(true); // the list was out of date
       if (!confirm(t('lib.confirmRemove', { name: f.name }))) return;
       const del = confirm(t('lib.confirmDeleteIndex'));
       await api('/api/library/remove', { id: f.id, deleteIndex: del });
       afterLibraryChange();
     } else if (el.dataset.reindex) {
       const f = state.lib.files.find((x) => x.id === Number(el.dataset.reindex));
+      if (!f) return refreshState(true);
       if (!confirm(t('lib.confirmReindex', { name: f.name }))) return;
       await api('/api/library/reindex', { id: f.id });
       afterLibraryChange();

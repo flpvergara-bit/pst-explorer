@@ -141,13 +141,25 @@ function startJob(f, phase, careful) {
   });
 }
 
+// Resolves when the indexer has exited and released its index
 function stopJob(fileId) {
-  if (!J.child || (fileId != null && J.job && J.job.fileId !== fileId)) return false;
+  if (!J.child || (fileId != null && J.job && J.job.fileId !== fileId)) return Promise.resolve(false);
   const c = J.child;
   J.child = null;
   J.job = null;
+  const exited = new Promise((resolve) => c.once('exit', () => resolve(true)));
   c.kill();
-  return true;
+  return exited;
+}
+
+// Before deleting an index: the consolidation keeps the active ones attached
+function stopConsolidation() {
+  const c = J.consolidating && J.consolidating.child;
+  if (!c) return Promise.resolve();
+  J.consolidatePending = false; // libraryChanged starts it again
+  const exited = new Promise((resolve) => c.once('exit', resolve));
+  c.kill();
+  return exited;
 }
 
 // Consolidation: duplicate copies across backups and global conversations
@@ -158,7 +170,7 @@ function requestConsolidation() {
   const child = fork(path.join(__dirname, 'src', 'consolidate.js'), [], {
     stdio: ['ignore', 'inherit', 'inherit', 'ipc'], execArgv: ['--max-old-space-size=4096'], env: CHILD_ENV,
   });
-  J.consolidating = { startedAt: Date.now() };
+  J.consolidating = { startedAt: Date.now(), child };
   child.send({ libDbPath: lib.libDbPath, files, sig });
   child.on('message', (m) => {
     if (m.type === 'done') J.lastConsolidation = { ...m.stats, at: Date.now() };
@@ -522,11 +534,14 @@ app.post('/api/library/add-folder', wrap(async (req, res) => {
 
 app.post('/api/library/remove', wrap(async (req, res) => {
   const id = Number(req.body.id);
-  stopJob(id);
+  const deleteIndex = !!req.body.deleteIndex;
+  await stopJob(id);
+  if (deleteIndex) await stopConsolidation();
   readers.close(id);
-  if (!lib.remove(id, !!req.body.deleteIndex)) throw httpError(404, t('err.notFound'));
+  let removed;
+  try { removed = lib.remove(id, deleteIndex); } finally { libraryChanged(); }
+  if (!removed) throw httpError(404, t('err.notFound'));
   J.failed.delete(id);
-  libraryChanged();
   res.json({ ok: true });
 }));
 
@@ -543,14 +558,16 @@ app.post('/api/library/enable', wrap(async (req, res) => {
 app.post('/api/library/reindex', wrap(async (req, res) => {
   const f = lib.byId(req.body.id);
   if (!f) throw httpError(404, t('err.notFound'));
-  stopJob(f.id);
+  // without the PST the index could not be rebuilt: keep it searchable
+  if (!lib.exists(f)) throw httpError(409, t('err.unavailable', { path: f.path }));
+  await stopJob(f.id);
+  await stopConsolidation();
   readers.close(f.id);
   J.failed.delete(f.id);
   J.restarts.delete(f.id);
   lib.conn.close(); // release the index so it can be deleted
   lib.conn = null;
-  lib.resetIndex(f);
-  libraryChanged();
+  try { lib.resetIndex(f); } finally { libraryChanged(); }
   res.json({ ok: true });
 }));
 

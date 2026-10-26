@@ -154,7 +154,8 @@ class Library {
 }
 
 function removeDb(file) {
-  for (const x of [file, file + '-wal', file + '-shm']) { try { fs.rmSync(x); } catch { /* */ } }
+  // force only ignores missing files: a locked index must not look deleted
+  for (const x of [file, file + '-wal', file + '-shm']) fs.rmSync(x, { force: true });
 }
 
 function checkHeader(p) {
